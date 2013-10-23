@@ -1,86 +1,107 @@
-#!/usr/bin/python
+#!/usr/bin/env python
+
+"""
+organize_photos.py - Organize an unstructured folder of photo files by date
+
+Note: This is a minor rewrite of @cliss's extension [1,2] of Dr. Drang's 
+photo management scripts [3].
+
+[1] https://gist.github.com/cliss/6854904
+[2] http://tumblr.caseyliss.com/day/2013/10/06
+[2] http://www.leancrew.com/all-this/2013/10/photo-management-via-the-finder/
+"""
 
 import sys
-import os, shutil
+import os, os.path
 import subprocess
-import os.path
 from datetime import datetime
 
-######################## Functions #########################
 
-def photoDate(f):
-  "Return the date/time on which the given photo was taken."
-
-  cDate = subprocess.check_output(['sips', '-g', 'creation', f])
-  cDate = cDate.split('\n')[1].lstrip().split(': ')[1]
-  return datetime.strptime(cDate, "%Y:%m:%d %H:%M:%S")
+## Edit these home-relative paths to set input and output locations
+sourcePath = 'Desktop/Photos to Organize'
+destPath = 'Pictures/Photos'
+## No more editing (unless you're fixing/improving the script)
 
 
-###################### Main program ########################
+sourceDir = os.path.join(os.environ['HOME'], sourcePath)
+destDir = os.path.join(os.environ['HOME'], destPath)
+errorDir = os.path.join(destDir, 'Unsorted')
 
-# Where the photos are and where they're going.
-sourceDir = os.environ['HOME'] + '/Pictures/iPhone Incoming'
-destDir = os.environ['HOME'] + '/Pictures/iPhone'
-errorDir = destDir + '/Unsorted/'
+print 'Moving from %s to %s.' % (sourceDir, destDir)
 
-# The format for the new file names.
-fmt = "%Y-%m-%d %H-%M-%S"
+def get_date_time_of_photo(f):
+    cDate = subprocess.check_output(['sips', '-g', 'creation', f])
+    cDate = cDate.split('\n')[1].lstrip().split(': ')[1]
+    return datetime.strptime(cDate, "%Y:%m:%d %H:%M:%S")
 
-# The problem files.
-problems = []
+def get_source_photo_filenames(d):
+    p = []
+    is_photo = lambda f: f[-4:].lower() == '.jpg' or f[-5:].lower() == '.jpeg'
+    for dirpath, dirnames, filenames in os.walk(sourceDir):
+        path = os.path.join(sourceDir, dirpath)
+        p.extend(map(lambda f: os.path.join(path, f), filter(is_photo, filenames)))
+    return p
+photos = get_source_photo_filenames(sourceDir)
+print 'Found %d photos to process.' % len(photos)
 
-# Get all the JPEGs in the source folder.
-photos = os.listdir(sourceDir)
-photos = [ x for x in photos if x[-4:] == '.jpg' or x[-4:] == '.JPG' ]
+if not os.path.exists(destDir):
+    os.makedirs(destDir)
+if not os.path.exists(errorDir):
+    os.makedirs(errorDir)
 
-# Prepare to output as processing occurs
 lastMonth = 0
 lastYear = 0
+fmt = "%Y-%m-%d %H-%M-%S"
+problems = []
 
-# Create the destination folder if necessary
-if not os.path.exists(destDir):
-  os.makedirs(destDir)
-if not os.path.exists(errorDir):
-  os.makedirs(errorDir)
+# Open a log file to record copy operations and errors
+logfd = file(os.path.join(destDir, 'organize_photos.log'), 'w')
 
-# Copy photos into year and month subfolders. Name the copies according to
-# their timestamps. If more than one photo has the same timestamp, add
-# suffixes 'a', 'b', etc. to the names. 
-for photo in photos:
-  # print "Processing %s..." % photo
-  original = sourceDir + '/' + photo
-  suffix = 'a'
-  try:
-    pDate = photoDate(original)
-    yr = pDate.year
-    mo = pDate.month
-
-    if not lastYear == yr or not lastMonth == mo:
-      sys.stdout.write('\nProcessing %04d-%02d...' % (yr, mo))
-      lastMonth = mo
-      lastYear = yr
-    else:
-      sys.stdout.write('.')
+for original in photos:
+    suffix = 'a'
     
-    newname = pDate.strftime(fmt)
-    thisDestDir = destDir + '/%04d/%02d' % (yr, mo)
-    if not os.path.exists(thisDestDir):
-      os.makedirs(thisDestDir)
+    try:
+        pDate = get_date_time_of_photo(original)
+        yr = pDate.year
+        mo = pDate.month
 
-    duplicate = thisDestDir + '/%s.jpg' % (newname)
-    while os.path.exists(duplicate):
-      newname = pDate.strftime(fmt) + suffix
-      duplicate = destDir + '/%04d/%02d/%s.jpg' % (yr, mo, newname)
-      suffix = chr(ord(suffix) + 1)
-    shutil.copy2(original, duplicate)
-  except Exception:
-    shutil.copy2(original, errorDir + photo)
-    problems.append(photo)
-  except:
-    sys.exit("Execution stopped.")
+        if (mo, yr) != (lastMonth, lastYear):
+            sys.stdout.write('\nProcessing %04d-%02d...' % (yr, mo))
+            lastMonth = mo
+            lastYear = yr
+        else:
+            sys.stdout.write('.')
 
-# Report the problem files, if any.
+        newname = pDate.strftime(fmt)
+        thisDestDir = os.path.join(destDir, '%04d' % yr, '%02d' % mo)
+        if not os.path.exists(thisDestDir):
+            os.makedirs(thisDestDir)
+
+        duplicate = os.path.join(thisDestDir, '%s.jpg' % newname)
+        while os.path.exists(duplicate):
+            duplicate = os.path.join(thisDestDir, '%s%s.jpg' % (newname, suffix))
+            suffix = chr(ord(suffix) + 1)
+            
+        if subprocess.call(['cp', '-p', original, duplicate]) != 0:
+            raise Exception
+        
+        print >>logfd, 'Copied: %s -> %s' % (original, duplicate)
+        
+    except Exception:
+        unsorted_photo = os.path.join(errorDir, os.path.split(original)[1])
+        subprocess.call(['cp', '-p', original, unsorted_photo])
+        problems.append(original[len(os.environ['HOME']):])
+        print >>logfd, 'Error: unable to copy %s' % original
+        
+    except:
+        sys.exit("Execution stopped.")
+
 if len(problems) > 0:
-  print "\nProblem files:"
-  print "\n".join(problems)
-  print "These can be found in: %s" % errorDir
+    print "\nProblem files:"
+    print "\n\t".join(problems)
+    print "These can be found in: %s" % errorDir
+else:
+    sys.stdout.write('\n')
+    
+logfd.close()
+sys.exit(0)
