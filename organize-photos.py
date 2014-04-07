@@ -1,16 +1,20 @@
 #!/usr/bin/env python
 
 """
-organize-photos.py - Organize an unstructured folder tree of photos by date
+organize-photos.py - Organize an unstructured folder tree of photos and movie
+    files into a month-and-year folder structure.
 
 Note: This is a minor rewrite of @cliss's extension [1,2] of @drdrang's 
 photo management scripts [3], and includes a tweak from @jamiepinkham [4,5].
+The lists of raw [6] and video [7] file extensions were found elsewhere.
 
 [1] https://gist.github.com/cliss/6854904
 [2] http://tumblr.caseyliss.com/day/2013/10/06
 [3] http://www.leancrew.com/all-this/2013/10/photo-management-via-the-finder/
 [4] https://gist.github.com/jamiepinkham/6984369
 [5] https://twitter.com/drdrang/status/389952079763996672
+[6] http://www.file-extensions.org/filetype/extension/name/digital-camera-raw-files
+[7] http://www.fileinfo.com/filetypes/video
 """
 
 import sys
@@ -19,34 +23,56 @@ import subprocess
 from datetime import datetime
 
 ## Edit these paths (relative to home) to set input and output locations
-sourcePath = 'Desktop/Photos to Organize'
-destPath = 'Pictures/Photos'
+sourceDir = "Pictures/Incoming"
+destDir = "/Volumes/Blue Drive/Photos"
 ## No more editing (unless you're fixing/improving the script)
 
-def get_date_time_of_photo(f):
+JPG_EXTENSIONS = (  '.jpg', '.jpeg', '.jpe')
+RAW_EXTENSIONS = (  '.3fr','.3pr','.arw','.ce1','.ce2','.cib','.cmt','.cr2','.craw','.crw',
+                    '.dc2','.dcr','.dng','.erf','.exf','.fff','.fpx','.gray','.grey','.gry',
+                    '.iiq','.kc2','.kdc','.mdc','.mef','.mfw','.mos','.mrw','.ndd','.nef','.nop',
+                    '.nrw','.nwb','.orf','.pcd','.pef','.ptx','.ra2','.raf','.raw','rw2','.rwl',
+                    '.rwz','.sd0','.sd1','.sr2','.srf','.srw','.st4','.st5','.st6','.st7','.st8',
+                    '.stx','.x3f','.ycbcra')
+PHOTO_EXTENSIONS = JPG_EXTENSIONS + RAW_EXTENSIONS
+MOVIE_EXTENSIONS = ('.3g2','.3gp','.asf','.asx','.avi','.flv','.m4v','.mov','.mp4','.mpg',
+                    '.rm','.srt','.swf','.vob','.wmv','.aepx','.ale','.avp','.avs','.bdm',
+                    '.bik','.bin','.bsf','.camproj','.cpi','.dash','.divx','.dmsm','.dream',
+                    '.dvdmedia','.dvr-ms','.dzm','.dzp','.edl','.f4v','.fbr','.fcproject',
+                    '.hdmov','.imovieproj','.ism','.ismv','.m2p','.mkv','.mod','.moi',
+                    '.mpeg','.mts','.mxf','.ogv','.otrkey','.pds','.prproj','.psh','.r3d',
+                    '.rcproject','.rmvb','.scm','.smil','.snagproj','.sqz','.stx','.swi','.tix',
+                    '.trp','.ts','.veg','.vf','.vro','.webm','.wlmp','.wtv','.xvid','.yuv')
+VALID_EXTENSIONS = PHOTO_EXTENSIONS + MOVIE_EXTENSIONS
+
+def get_source_date_time(f):
     try:
+        if os.path.splitext(f)[1].lower() in MOVIE_EXTENSIONS:
+            raise TypeError
         cDate = subprocess.check_output(['sips', '-g', 'creation', f])
         cDate = cDate.split('\n')[1].lstrip().split(': ')[1]
         return datetime.strptime(cDate, "%Y:%m:%d %H:%M:%S")
     except:
         return datetime.fromtimestamp(os.path.getmtime(f))
 
-def get_source_photo_filenames(d):
-    p = []
-    is_photo = lambda f: os.path.splitext(f)[1].lower() in ('.jpg', '.jpeg', '.jpe')
+def get_source_filenames(d):
+    src = []
+    is_valid = lambda f: os.path.splitext(f)[1].lower() in VALID_EXTENSIONS
     for dirpath, dirnames, filenames in os.walk(d):        
         path = os.path.join(d, dirpath)
-        p.extend(map(lambda f: os.path.join(path, f), filter(is_photo, filenames)))
-    return p
+        src.extend(map(lambda f: os.path.join(path, f), filter(is_valid, filenames)))
+    return src
 
 home = os.environ['HOME']
-sourceDir = os.path.join(home, sourcePath)
-destDir = os.path.join(home, destPath)
+if not sourceDir.startswith(os.path.sep):
+    sourceDir = os.path.join(home, sourceDir)
+if not destDir.startswith(os.path.sep):
+    destDir = os.path.join(home, destDir)
 errorDir = os.path.join(destDir, 'Unsorted')
 print 'Moving from %s to %s.' % (sourceDir, destDir)
 
-photos = get_source_photo_filenames(sourceDir)
-print 'Found %d photos to process.' % len(photos)
+sources = get_source_filenames(sourceDir)
+print 'Found %d photos and videos to process.' % len(sources)
 
 if not os.path.exists(destDir):
     os.makedirs(destDir)
@@ -61,11 +87,14 @@ problems = []
 # Open a log file to record copy operations and errors
 logfd = file(os.path.join(destDir, 'organize-photos.log'), 'w')
 
-for original in photos:
+for original in sources:
     suffix = 'a'
+    ext = os.path.splitext(original)[1].lower()
+    if ext in JPG_EXTENSIONS:
+        ext = '.jpg'
     
     try:
-        pDate = get_date_time_of_photo(original)
+        pDate = get_source_date_time(original)
         yr = pDate.year
         mo = pDate.month
 
@@ -73,17 +102,21 @@ for original in photos:
             sys.stdout.write('\nProcessing %04d-%02d...' % (yr, mo))
             lastMonth = mo
             lastYear = yr
+        elif ext in MOVIE_EXTENSIONS:
+            sys.stdout.write(':')
         else:
             sys.stdout.write('.')
 
         newname = pDate.strftime(fmt)
         thisDestDir = os.path.join(destDir, '%04d' % yr, '%02d' % mo)
+        if ext in MOVIE_EXTENSIONS:
+            thisDestDir = os.path.join(thisDestDir, 'movies')
         if not os.path.exists(thisDestDir):
             os.makedirs(thisDestDir)
 
-        duplicate = os.path.join(thisDestDir, '%s.jpg' % newname)
+        duplicate = os.path.join(thisDestDir, newname + ext)
         while os.path.exists(duplicate):
-            duplicate = os.path.join(thisDestDir, '%s%s.jpg' % (newname, suffix))
+            duplicate = os.path.join(thisDestDir, newname + suffix + ext)
             suffix = chr(ord(suffix) + 1)
             
         if subprocess.call(['cp', '-p', original, duplicate]) != 0:
@@ -92,10 +125,10 @@ for original in photos:
         print >>logfd, 'Copied: %s -> %s' % (original, duplicate)
         
     except Exception:
-        unsorted_photo = os.path.join(errorDir, os.path.basename(original))
-        subprocess.call(['cp', '-p', original, unsorted_photo])
+        unsorted_file = os.path.join(errorDir, os.path.basename(original))
+        subprocess.call(['cp', '-p', original, unsorted_file])
         problems.append(original[len(home):])
-        print >>logfd, 'Error: unable to copy %s' % original
+        print >>logfd, 'Error: unable to organize %s' % original
         
     except:
         sys.exit("Execution stopped.")
@@ -104,7 +137,7 @@ if len(problems) > 0:
     print "\nProblem files:"
     print "\n\t".join(problems)
     print "These can be found in: %s" % errorDir
-elif len(photos):
+elif len(sources):
     sys.stdout.write('\n')
     
 logfd.close()
