@@ -4,7 +4,7 @@
 organize-photos.py - Organize an unstructured folder tree of photos and movie
     files into a month-and-year folder structure.
 
-Note: This is a minor rewrite of @cliss's extension [1,2] of @drdrang's 
+Note: This is a minor rewrite of @cliss's extension [1,2] of @drdrang's
 photo management scripts [3], and includes a tweak from @jamiepinkham [4,5].
 The lists of raw [6] and video [7] file extensions were found elsewhere.
 
@@ -23,8 +23,8 @@ import subprocess
 from datetime import datetime
 
 ## Edit these paths (relative to home) to set input and output locations
-sourceDir = "Pictures/Incoming"
-destDir = "/Volumes/Blue Drive/Photos"
+sourceDir = "Pictures/Photo Imports"
+destDir = "Pictures/Photos"
 ## No more editing (unless you're fixing/improving the script)
 
 JPG_EXTENSIONS = (  '.jpg', '.jpeg', '.jpe')
@@ -43,6 +43,7 @@ MOVIE_EXTENSIONS = ('.3g2','.3gp','.asf','.asx','.avi','.flv','.m4v','.mov','.mp
                     '.mpeg','.mts','.mxf','.ogv','.otrkey','.pds','.prproj','.psh','.r3d',
                     '.rcproject','.rmvb','.scm','.smil','.snagproj','.sqz','.stx','.swi','.tix',
                     '.trp','.ts','.veg','.vf','.vro','.webm','.wlmp','.wtv','.xvid','.yuv')
+SIDECAR_EXTENSIONS = ('.aae',)
 VALID_EXTENSIONS = PHOTO_EXTENSIONS + MOVIE_EXTENSIONS
 
 def get_source_date_time(f):
@@ -58,7 +59,7 @@ def get_source_date_time(f):
 def get_source_filenames(d):
     src = []
     is_valid = lambda f: os.path.splitext(f)[1].lower() in VALID_EXTENSIONS
-    for dirpath, dirnames, filenames in os.walk(d):        
+    for dirpath, dirnames, filenames in os.walk(d):
         path = os.path.join(d, dirpath)
         src.extend(map(lambda f: os.path.join(path, f), filter(is_valid, filenames)))
     return src
@@ -89,10 +90,21 @@ logfd = file(os.path.join(destDir, 'organize-photos.log'), 'w')
 
 for original in sources:
     suffix = 'a'
-    ext = os.path.splitext(original)[1].lower()
+    orig_base, orig_ext = os.path.splitext(original)
+    ext = orig_ext.lower()
     if ext in JPG_EXTENSIONS:
         ext = '.jpg'
-    
+
+    sidecar = None
+    sidecar_ext = None
+    for sc_ext in SIDECAR_EXTENSIONS:
+        for f in (str.upper, str.lower):
+            sc = orig_base + f(sc_ext)
+            if os.path.exists(sc):
+                sidecar = sc
+                sidecar_ext = f(sc_ext)
+                break
+
     try:
         pDate = get_source_date_time(original)
         yr = pDate.year
@@ -118,18 +130,26 @@ for original in sources:
         while os.path.exists(duplicate):
             duplicate = os.path.join(thisDestDir, newname + suffix + ext)
             suffix = chr(ord(suffix) + 1)
-            
+
         if subprocess.call(['cp', '-p', original, duplicate]) != 0:
             raise Exception
-        
         print >>logfd, 'Copied: %s -> %s' % (original, duplicate)
-        
+
+        if sidecar:
+            sidecar_copy = os.path.splitext(duplicate)[0] + sidecar_ext.lower()
+            if subprocess.call(['cp', '-p', sidecar, sidecar_copy]) != 0:
+                print >>logfd, 'Failed to copy sidecar: %s' % sidecar
+            else:
+                print >>logfd, 'Copied: %s -> %s' % (sidecar, sidecar_copy)
+
+        sys.stdout.flush()
+
     except Exception:
         unsorted_file = os.path.join(errorDir, os.path.basename(original))
         subprocess.call(['cp', '-p', original, unsorted_file])
         problems.append(original[len(home):])
         print >>logfd, 'Error: unable to organize %s' % original
-        
+
     except:
         sys.exit("Execution stopped.")
 
@@ -139,6 +159,6 @@ if len(problems) > 0:
     print "These can be found in: %s" % errorDir
 elif len(sources):
     sys.stdout.write('\n')
-    
+
 logfd.close()
 sys.exit(0)
