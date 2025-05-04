@@ -23,77 +23,206 @@ import subprocess
 from datetime import datetime
 
 ## Edit these paths (relative to home) to set input and output locations
-sourceDir = "Pictures/Photo Imports"
-destDir = "Pictures/Photos"
+sourceDir = "Pictures/Imports"
+destDir = "Pictures/Photos/Stream"
 ## No more editing (unless you're fixing/improving the script)
 
-JPG_EXTENSIONS = (  '.jpg', '.jpeg', '.jpe')
-RAW_EXTENSIONS = (  '.3fr','.3pr','.arw','.ce1','.ce2','.cib','.cmt','.cr2','.craw','.crw',
-                    '.dc2','.dcr','.dng','.erf','.exf','.fff','.fpx','.gray','.grey','.gry',
-                    '.iiq','.kc2','.kdc','.mdc','.mef','.mfw','.mos','.mrw','.ndd','.nef','.nop',
-                    '.nrw','.nwb','.orf','.pcd','.pef','.ptx','.ra2','.raf','.raw','rw2','.rwl',
-                    '.rwz','.sd0','.sd1','.sr2','.srf','.srw','.st4','.st5','.st6','.st7','.st8',
-                    '.stx','.x3f','.ycbcra')
+JPG_EXTENSIONS = (".jpg", ".jpeg", ".jpe")
+RAW_EXTENSIONS = (
+    ".3fr",
+    ".3pr",
+    ".arw",
+    ".ce1",
+    ".ce2",
+    ".cib",
+    ".cmt",
+    ".cr2",
+    ".craw",
+    ".crw",
+    ".dc2",
+    ".dcr",
+    ".dng",
+    ".erf",
+    ".exf",
+    ".fff",
+    ".fpx",
+    ".gray",
+    ".grey",
+    ".gry",
+    ".heic",
+    ".iiq",
+    ".kc2",
+    ".kdc",
+    ".mdc",
+    ".mef",
+    ".mfw",
+    ".mos",
+    ".mrw",
+    ".ndd",
+    ".nef",
+    ".nop",
+    ".nrw",
+    ".nwb",
+    ".orf",
+    ".pcd",
+    ".pef",
+    ".png",
+    ".ptx",
+    ".ra2",
+    ".raf",
+    ".raw",
+    "rw2",
+    ".rwl",
+    ".rwz",
+    ".sd0",
+    ".sd1",
+    ".sr2",
+    ".srf",
+    ".srw",
+    ".st4",
+    ".st5",
+    ".st6",
+    ".st7",
+    ".st8",
+    ".stx",
+    ".x3f",
+    ".ycbcra",
+)
 PHOTO_EXTENSIONS = JPG_EXTENSIONS + RAW_EXTENSIONS
-MOVIE_EXTENSIONS = ('.3g2','.3gp','.asf','.asx','.avi','.flv','.m4v','.mov','.mp4','.mpg',
-                    '.rm','.srt','.swf','.vob','.wmv','.aepx','.ale','.avp','.avs','.bdm',
-                    '.bik','.bin','.bsf','.camproj','.cpi','.dash','.divx','.dmsm','.dream',
-                    '.dvdmedia','.dvr-ms','.dzm','.dzp','.edl','.f4v','.fbr','.fcproject',
-                    '.hdmov','.imovieproj','.ism','.ismv','.m2p','.mkv','.mod','.moi',
-                    '.mpeg','.mts','.mxf','.ogv','.otrkey','.pds','.prproj','.psh','.r3d',
-                    '.rcproject','.rmvb','.scm','.smil','.snagproj','.sqz','.stx','.swi','.tix',
-                    '.trp','.ts','.veg','.vf','.vro','.webm','.wlmp','.wtv','.xvid','.yuv')
-SIDECAR_EXTENSIONS = ('.aae',)
+MOVIE_EXTENSIONS = (
+    ".3g2",
+    ".3gp",
+    ".asf",
+    ".asx",
+    ".avi",
+    ".flv",
+    ".m4v",
+    ".mov",
+    ".mp4",
+    ".mpg",
+    ".rm",
+    ".srt",
+    ".swf",
+    ".vob",
+    ".wmv",
+    ".aepx",
+    ".ale",
+    ".avp",
+    ".avs",
+    ".bdm",
+    ".bik",
+    ".bin",
+    ".bsf",
+    ".camproj",
+    ".cpi",
+    ".dash",
+    ".divx",
+    ".dmsm",
+    ".dream",
+    ".dvdmedia",
+    ".dvr-ms",
+    ".dzm",
+    ".dzp",
+    ".edl",
+    ".f4v",
+    ".fbr",
+    ".fcproject",
+    ".hdmov",
+    ".imovieproj",
+    ".ism",
+    ".ismv",
+    ".m2p",
+    ".mkv",
+    ".mod",
+    ".moi",
+    ".mpeg",
+    ".mts",
+    ".mxf",
+    ".ogv",
+    ".otrkey",
+    ".pds",
+    ".prproj",
+    ".psh",
+    ".r3d",
+    ".rcproject",
+    ".rmvb",
+    ".scm",
+    ".smil",
+    ".snagproj",
+    ".sqz",
+    ".stx",
+    ".swi",
+    ".tix",
+    ".trp",
+    ".ts",
+    ".veg",
+    ".vf",
+    ".vro",
+    ".webm",
+    ".wlmp",
+    ".wtv",
+    ".xvid",
+    ".yuv",
+)
+SIDECAR_EXTENSIONS = (".aae",)
 VALID_EXTENSIONS = PHOTO_EXTENSIONS + MOVIE_EXTENSIONS
+
 
 def get_source_date_time(f):
     try:
         if os.path.splitext(f)[1].lower() in MOVIE_EXTENSIONS:
             raise TypeError
-        cDate = subprocess.check_output(['sips', '-g', 'creation', f])
-        cDate = cDate.split('\n')[1].lstrip().split(': ')[1]
+        cDate = subprocess.check_output(["sips", "-g", "creation", f])
+        cDate = cDate.split("\n")[1].lstrip().split(": ")[1]
         return datetime.strptime(cDate, "%Y:%m:%d %H:%M:%S")
     except:
         return datetime.fromtimestamp(os.path.getmtime(f))
+
 
 def get_source_filenames(d):
     src = []
     is_valid = lambda f: os.path.splitext(f)[1].lower() in VALID_EXTENSIONS
     for dirpath, dirnames, filenames in os.walk(d):
         path = os.path.join(d, dirpath)
-        src.extend(map(lambda f: os.path.join(path, f), filter(is_valid, filenames)))
+        src.extend([os.path.join(path, f) for f in list(filter(is_valid, filenames))])
     return src
 
-home = os.environ['HOME']
+def check_file_size(file1, file2):
+    """Checks if two files have the same size using os.stat()."""
+    try:
+        return os.stat(file1).st_size == os.stat(file2).st_size
+    except FileNotFoundError:
+        return False
+
+
+home = os.environ["HOME"]
 if not sourceDir.startswith(os.path.sep):
     sourceDir = os.path.join(home, sourceDir)
 if not destDir.startswith(os.path.sep):
     destDir = os.path.join(home, destDir)
-errorDir = os.path.join(destDir, 'Unsorted')
-print 'Moving from %s to %s.' % (sourceDir, destDir)
+errorDir = os.path.join(destDir, "Unsorted")
+print("Moving from %s to %s." % (sourceDir, destDir))
 
 sources = get_source_filenames(sourceDir)
-print 'Found %d photos and videos to process.' % len(sources)
+print("Found %d photos and videos to process." % len(sources))
 
 if not os.path.exists(destDir):
     os.makedirs(destDir)
 if not os.path.exists(errorDir):
     os.makedirs(errorDir)
 
-lastMonth = 0
-lastYear = 0
 fmt = "%Y-%m-%d %H-%M-%S"
 problems = []
 
 # Open a log file to record copy operations and errors
-logfd = file(os.path.join(destDir, 'organize-photos.log'), 'w')
+logfd = open(os.path.join(destDir, "organize-photos.log"), "w")
 
 for original in sources:
-    suffix = 'a'
+    suffix = "a"
     orig_base, orig_ext = os.path.splitext(original)
     ext = orig_ext.lower()
     if ext in JPG_EXTENSIONS:
-        ext = '.jpg'
+        ext = ".jpg"
 
     sidecar = None
     sidecar_ext = None
@@ -110,55 +239,62 @@ for original in sources:
         yr = pDate.year
         mo = pDate.month
 
-        if (mo, yr) != (lastMonth, lastYear):
-            sys.stdout.write('\nProcessing %04d-%02d...' % (yr, mo))
-            lastMonth = mo
-            lastYear = yr
-        elif ext in MOVIE_EXTENSIONS:
-            sys.stdout.write(':')
-        else:
-            sys.stdout.write('.')
-
         newname = pDate.strftime(fmt)
-        thisDestDir = os.path.join(destDir, '%04d' % yr, '%02d' % mo)
+        thisDestDir = os.path.join(destDir, "%04d" % yr, "%02d" % mo)
         if ext in MOVIE_EXTENSIONS:
-            thisDestDir = os.path.join(thisDestDir, 'movies')
+            thisDestDir = os.path.join(thisDestDir, "movies")
         if not os.path.exists(thisDestDir):
             os.makedirs(thisDestDir)
 
+        skip_dupe = False
         duplicate = os.path.join(thisDestDir, newname + ext)
         while os.path.exists(duplicate):
+            if check_file_size(original, duplicate):
+                skip_dupe = True
+                break
             duplicate = os.path.join(thisDestDir, newname + suffix + ext)
             suffix = chr(ord(suffix) + 1)
 
-        if subprocess.call(['cp', '-p', original, duplicate]) != 0:
+        # If file duplicate (date, time, size) exists, stop processing
+        if skip_dupe:
+            sys.stdout.write("o")
+            sys.stdout.flush()
+            continue
+
+        # Finish the copy operation if not a duplicate
+        if subprocess.call(["cp", "-p", original, duplicate]) != 0:
             raise Exception
-        print >>logfd, 'Copied: %s -> %s' % (original, duplicate)
+        print("Copied: %s -> %s" % (original, duplicate), file=logfd)
 
         if sidecar:
             sidecar_copy = os.path.splitext(duplicate)[0] + sidecar_ext.lower()
-            if subprocess.call(['cp', '-p', sidecar, sidecar_copy]) != 0:
-                print >>logfd, 'Failed to copy sidecar: %s' % sidecar
+            if subprocess.call(["cp", "-p", sidecar, sidecar_copy]) != 0:
+                print("Failed to copy sidecar: %s" % sidecar, file=logfd)
             else:
-                print >>logfd, 'Copied: %s -> %s' % (sidecar, sidecar_copy)
+                print("Copied: %s -> %s" % (sidecar, sidecar_copy), file=logfd)
 
+        # Output a status indicator for a completed copy ('+', movies; '-', photos)
+        if ext in MOVIE_EXTENSIONS:
+            sys.stdout.write("+")
+        else:
+            sys.stdout.write("-")
         sys.stdout.flush()
 
     except Exception:
         unsorted_file = os.path.join(errorDir, os.path.basename(original))
-        subprocess.call(['cp', '-p', original, unsorted_file])
-        problems.append(original[len(home):])
-        print >>logfd, 'Error: unable to organize %s' % original
+        subprocess.call(["cp", "-p", original, unsorted_file])
+        problems.append(original[len(home) :])
+        print("Error: unable to organize %s" % original, file=logfd)
 
     except:
         sys.exit("Execution stopped.")
 
 if len(problems) > 0:
-    print "\nProblem files:"
-    print "\n\t".join(problems)
-    print "These can be found in: %s" % errorDir
+    print("\nProblem files:")
+    print("\n\t".join(problems))
+    print("These can be found in: %s" % errorDir)
 elif len(sources):
-    sys.stdout.write('\n')
+    sys.stdout.write("\n")
 
 logfd.close()
 sys.exit(0)
