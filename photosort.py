@@ -53,6 +53,9 @@ METADATA_EXTENSIONS = (
     ".aae", ".dat", ".ini", ".cfg", ".xml", ".plist", ".json", ".txt", ".log",
     ".info", ".meta", ".properties", ".conf", ".config", ".xmp"
 )
+NUISANCE_EXTENSIONS = (
+    ".ds_store", ".thumbs.db", ".desktop.ini", "thumbs.db"
+)
 VALID_EXTENSIONS = PHOTO_EXTENSIONS + MOVIE_EXTENSIONS
 
 # TODO: Future enhancement - Add ffmpeg video conversion for legacy formats
@@ -127,12 +130,22 @@ class PhotoSorter:
         )
         self.logger = logging.getLogger("photosort")
 
-        # Create necessary directories
+        # Set up directory paths
+        self.error_dir = self.dest / "Unsorted"
+        self.metadata_dir = self.dest / "Metadata"
+        
+        # Create main destination directory
         if not self.dry_run:
             self.dest.mkdir(parents=True, exist_ok=True)
-            self.error_dir = self.dest / "Unsorted"
+
+    def _ensure_error_dir(self) -> None:
+        """Create error directory if needed and not in dry-run mode."""
+        if not self.dry_run and not self.error_dir.exists():
             self.error_dir.mkdir(exist_ok=True)
-            self.metadata_dir = self.dest / "Metadata"
+
+    def _ensure_metadata_dir(self) -> None:
+        """Create metadata directory if needed and not in dry-run mode."""
+        if not self.dry_run and not self.metadata_dir.exists():
             self.metadata_dir.mkdir(exist_ok=True)
 
     def get_creation_date(self, file_path: Path) -> datetime:
@@ -240,6 +253,7 @@ class PhotoSorter:
         if not metadata_files:
             return
 
+        self._ensure_metadata_dir()
         for file_path in metadata_files:
             try:
                 # Preserve relative path structure in Metadata directory
@@ -318,6 +332,15 @@ class PhotoSorter:
         if dest_path.exists() and self.is_duplicate(file_path, dest_path):
             self.stats['duplicates'] += 1
             progress.update(task, description=f"Skipping duplicate: {file_path.name}")
+            
+            # Delete the duplicate source file if we're moving files
+            if self.move_files and not self.dry_run:
+                try:
+                    file_path.unlink()
+                    self.logger.debug(f"Deleted duplicate source file: {file_path}")
+                except Exception as e:
+                    self.logger.warning(f"Could not delete duplicate source file {file_path}: {e}")
+            
             return
 
         # Move main file
@@ -338,6 +361,7 @@ class PhotoSorter:
 
     def _move_to_error_dir(self, file_path: Path) -> None:
         """Move problematic file to error directory."""
+        self._ensure_error_dir()
         try:
             error_dest = self.error_dir / file_path.name
             counter = 1
@@ -382,8 +406,22 @@ def cleanup_source_directory(source: Path, dest: Path, console: Console) -> None
     if not any(source.iterdir()):
         return
     
-    # Recursively prune empty subfolders from the source tree
     console.print("Cleaning source folder...")
+    
+    # First, remove all nuisance files recursively
+    nuisance_count = 0
+    for file_path in source.rglob("*"):
+        if file_path.is_file() and file_path.name.lower() in NUISANCE_EXTENSIONS:
+            try:
+                file_path.unlink()
+                nuisance_count += 1
+            except Exception as e:
+                console.print(f"[yellow]Warning: Could not remove {file_path}: {e}[/yellow]")
+    
+    if nuisance_count > 0:
+        console.print(f"Removed {nuisance_count} nuisance files (.DS_Store, etc.)")
+    
+    # Recursively prune empty subfolders from the source tree
     for thisdir, subdirs, _ in os.walk(source, topdown=False):
         for thissubdir in subdirs:
             try:
@@ -394,7 +432,7 @@ def cleanup_source_directory(source: Path, dest: Path, console: Console) -> None
     # Move remaining unknown files
     unknowns = list(source.glob("*"))
     if unknowns:
-        console.print("Moving unknown files...")
+        console.print(f"Moving {len(unknowns)} unknown files...")
         unkpath = dest / "UnknownFiles"
         unkpath.mkdir(exist_ok=True)
         for remaining in unknowns:
@@ -529,8 +567,8 @@ def main() -> int:
             console.print("Processing media files...")
             sorter.process_files(media_files)
 
-        # If moving files, clean up the source directory
-        if not args.copy:
+        # If moving files (and not dry-run), clean up the source directory
+        if not args.copy and not args.dry_run:
             cleanup_source_directory(source, dest, console)
 
         sorter.print_summary()
