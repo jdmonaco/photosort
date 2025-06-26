@@ -67,7 +67,7 @@ photosort --help
 - `--source`, `-s`: Source directory containing photos to organize
 - `--dest`, `-d`: Destination directory for organized photos
 - `--dry-run`: Preview operations without making changes
-- `--move`: Move files (default) vs copy
+- `--copy`: Copy files instead of moving them (default is to move)
 - `--verbose`, `-v`: Detailed logging output
 
 ## File Organization
