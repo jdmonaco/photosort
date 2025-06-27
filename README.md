@@ -104,11 +104,14 @@ Photos and videos are organized into this clean structure:
 Destination/
 ├── 2024/
 │   ├── 01/
-│   │   ├── 2024-01-15_14-30-22.jpg
-│   │   ├── 2024-01-15_16-45-10.mp4  # Videos alongside photos
-│   │   └── 2024-01-20_12-30-45.jpg
+│   │   ├── 20240115_143022.jpg
+│   │   ├── 20240115_164510.mp4      # Videos sorted alongside photos
+│   │   ├── 20240120_123045.jpg
+│   │   ├── 20240120_123045_001.jpg  # Numerical suffix for photo bursts
+│   │   └── 20240120_123045_002.jpg
 │   └── 02/
-│       └── 2024-02-03_09-15-33.jpg
+│       ├── 20240203_091533.jpg      # Photo/video pairs share base filename
+│       └── 20240203_091533.mov      # to support Live Photo processing
 ```
 
 ### Import History Structure
