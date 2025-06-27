@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Photosort** is a modern Python tool for organizing photo and video collections into a year/month directory structure based on file creation dates. It's packaged as a proper Python tool installable via UV with comprehensive CLI features.
+**Photosort** is a modern Python tool for organizing photo and video collections into a year/month directory structure based on file creation dates. It's packaged as a proper Python tool installable via UV with comprehensive CLI features including file permissions, group ownership, and complete import history tracking.
 
 ## Architecture
 
@@ -12,13 +12,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **`photosort.py`**: Main script with class-based architecture
 - **`PhotoSorter` class**: Handles the multi-phase processing workflow
 - **`Config` class**: Manages YAML configuration and remembers user preferences
+- **`HistoryManager` class**: Manages import history, logging, and auxiliary file placement
 - **Rich UI**: Progress bars, tables, and colored console output
 
 ### Key Features
 - **Smart path handling**: Uses `pathlib.Path` throughout for cross-platform compatibility
-- **Configuration memory**: Stores last-used source/dest in `~/.config/photosort/photosort.yml`
+- **Configuration memory**: Stores preferences in `~/.photosort/config.yml`
+- **Import history tracking**: Complete audit trail in `~/.photosort/history/`
 - **Dynamic CLI help**: Shows current configured defaults in help text
 - **Safe operations**: Move files with validation, automatic source cleanup
+- **File permissions control**: Configurable file mode settings (e.g., 644, 600)
+- **Group ownership**: Configurable group ownership for files and directories
+- **Clean destinations**: Auxiliary files moved to timestamped history folders
 - **Simplified organization**: No movies subfolder - all media in same date folders
 - **Metadata separation**: Handles .aae and other metadata files separately
 - **Advanced deduplication**: Size comparison + optional content hashing for smaller files
@@ -55,12 +60,25 @@ uv run mypy photosort.py
 
 ## File Organization
 
-Output structure: `YYYY/MM/YYYY-MM-DD HH-MM-SS.ext`
+### Destination Structure
+Output structure: `YYYY/MM/YYYY-MM-DD_HH-MM-SS.ext`
 - All media (photos and videos) go directly in month folders for better Live Photo support
-- Metadata files (.aae, .xml, .json, etc.) go to `Metadata/` directory
-- Unknown file types go to `UnknownFiles/` directory
-- Problem files go to `Unsorted/` directory
+- Clean destination folders contain only organized media files
+
+### History Structure (`~/.photosort/`)
+```
+~/.photosort/
+├── config.yml                    # Configuration with saved preferences
+├── imports.log                   # Global import log with summary records
+└── history/                      # Per-import history folders
+    └── YYYY-MM-DD+DEST-NAME/     # Timestamped import sessions
+        ├── import.log            # Detailed logs for this import
+        ├── Metadata/             # .aae, .xml, .json metadata files
+        ├── UnknownFiles/         # Unrecognized file types
+        └── Unsorted/             # Problem files that couldn't be processed
+```
 - Source directory is automatically cleaned when moving files
+- All auxiliary files preserved in searchable history
 
 ## Key Functions
 
@@ -68,25 +86,55 @@ Output structure: `YYYY/MM/YYYY-MM-DD HH-MM-SS.ext`
 - `PhotoSorter.process_files()`: Main media file processing with progress tracking
 - `PhotoSorter.process_metadata_files()`: Handles metadata files separately
 - `cleanup_source_directory()`: Module function for post-processing source cleanup
+- `set_directory_groups()`: Applies group ownership to destination directories
 
 ### File Discovery
 - `find_source_files()`: Returns tuple of (media_files, metadata_files)
 - Separates processing streams for different file types
 
+### History Management
+- `HistoryManager.__init__()`: Creates timestamped import folders
+- `HistoryManager.setup_import_logger()`: Configures per-import logging
+- `HistoryManager.log_import_summary()`: Records import summary to global log
+
+### File Permissions
+- `parse_file_mode()`: Validates and converts octal mode strings
+- `parse_group()`: Validates group names against system groups
+- `PhotoSorter._apply_file_permissions()`: Sets file permissions post-move
+- `PhotoSorter._apply_file_group()`: Sets file group ownership post-move
+
 ## Configuration System
 
-The `Config` class manages `~/.config/photosort/photosort.yml`:
-- Remembers last source/destination paths
-- Updates automatically when user specifies new paths
+The `Config` class manages `~/.photosort/config.yml`:
+- Remembers last source/destination paths, file mode, and group preferences
+- Updates automatically when user specifies new values
 - CLI help shows current configured defaults
 - Graceful fallback if config is missing/corrupted
+- Config migration from old `~/.config/photosort/` location
 
 ## Error Handling
 
-- Comprehensive logging with Rich formatting
-- Problematic files moved to `Unsorted/` directory
-- Unknown files moved to `UnknownFiles/` directory
-- Metadata files moved to `Metadata/` directory
-- Safe file operations with validation
-- Automatic source directory cleanup after successful moves
-- Graceful degradation (filesystem dates if EXIF extraction fails)
+- **Dual logging system**: Console shows warnings/errors, import.log captures everything
+- **Problematic files**: Moved to history `Unsorted/` directory with error logging
+- **Unknown files**: Moved to history `UnknownFiles/` directory during cleanup
+- **Metadata files**: Moved to history `Metadata/` directory to keep destinations clean
+- **Safe file operations**: Validation with permission and group setting post-move
+- **Automatic source cleanup**: Removes empty directories and nuisance files
+- **Graceful degradation**: Filesystem dates used if EXIF extraction fails
+- **Permission errors**: File/group permission failures logged but don't stop processing
+
+## CLI Arguments
+
+### File Management
+- `--source, -s`: Source directory (shows configured default)
+- `--dest, -d`: Destination directory (shows configured default)
+- `--copy, -c`: Copy instead of move files
+- `--dry-run, -n`: Preview without making changes
+
+### File Ownership
+- `--mode, -m`: File permissions in octal (e.g., 644, 600) - saves as new default
+- `--group, -g`: Group ownership (e.g., staff, wheel) - saves as new default
+
+### Other Options
+- `--verbose, -v`: Enable debug logging to import.log
+- `--help`: Shows dynamic help with current configured defaults

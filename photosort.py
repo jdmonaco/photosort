@@ -10,9 +10,11 @@ Created with the assistance of Claude Code on 2025-06-24.
 """
 
 import argparse
+import grp
 import hashlib
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -62,13 +64,142 @@ VALID_EXTENSIONS = PHOTO_EXTENSIONS + MOVIE_EXTENSIONS
 # Goal: Convert old formats (mpg, 3gp, etc.) to modern mp4/h264
 
 
+class HistoryManager:
+    """Manages import history, logging, and auxiliary directory placement."""
+    
+    def __init__(self, dest_path: Path, dry_run: bool = False):
+        self.dest_path = dest_path
+        self.dry_run = dry_run
+        self.photosort_dir = Path.home() / ".photosort"
+        self.history_dir = self.photosort_dir / "history"
+        self.imports_log = self.photosort_dir / "imports.log"
+        
+        # Create timestamped import folder name
+        timestamp = datetime.now().strftime("%Y-%m-%d")
+        dest_name = self._sanitize_dest_name(dest_path)
+        self.import_folder_name = f"{timestamp}+{dest_name}"
+        self.import_folder = self.history_dir / self.import_folder_name
+        self.import_log = self.import_folder / "import.log"
+        
+        # Set up directories and logging if not dry run
+        if not dry_run:
+            self._setup_import_session()
+    
+    def _sanitize_dest_name(self, dest_path: Path) -> str:
+        """Convert destination path to safe folder name."""
+        # Use the last component of the path, sanitize for filesystem
+        name = dest_path.name
+        # Replace problematic characters with hyphens
+        sanitized = re.sub(r'[^\w\-_]', '-', name)
+        # Remove multiple consecutive hyphens
+        sanitized = re.sub(r'-+', '-', sanitized)
+        # Remove leading/trailing hyphens
+        return sanitized.strip('-')
+    
+    def _setup_import_session(self) -> None:
+        """Create import folder and setup logging."""
+        # Create directories
+        self.import_folder.mkdir(parents=True, exist_ok=True)
+        
+        # Handle folder name collisions by adding suffix
+        original_folder = self.import_folder
+        counter = 2
+        while self.import_folder.exists() and any(self.import_folder.iterdir()):
+            self.import_folder_name = f"{original_folder.name}-{counter}"
+            self.import_folder = self.history_dir / self.import_folder_name
+            self.import_log = self.import_folder / "import.log"
+            counter += 1
+        
+        # Create final import folder
+        self.import_folder.mkdir(parents=True, exist_ok=True)
+    
+    def setup_import_logger(self, logger: logging.Logger) -> None:
+        """Configure logger to write to import-specific log file."""
+        if self.dry_run:
+            return
+            
+        # Add file handler for import-specific logging
+        file_handler = logging.FileHandler(self.import_log)
+        file_handler.setLevel(logging.DEBUG)
+        formatter = logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        )
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+        
+        # Ensure logger level allows DEBUG messages to reach the file handler
+        logger.setLevel(logging.DEBUG)
+    
+    def get_metadata_dir(self) -> Path:
+        """Get path for metadata files in import history."""
+        return self.import_folder / "Metadata"
+    
+    def get_unknown_files_dir(self) -> Path:
+        """Get path for unknown files in import history."""
+        return self.import_folder / "UnknownFiles"
+    
+    def get_unsorted_dir(self) -> Path:
+        """Get path for problematic files in import history."""
+        return self.import_folder / "Unsorted"
+    
+    def log_import_summary(self, source: Path, dest: Path, stats: Dict, success: bool) -> None:
+        """Log import summary to global imports.log."""
+        if self.dry_run:
+            return
+            
+        # Ensure photosort directory exists
+        self.photosort_dir.mkdir(exist_ok=True)
+        
+        # Format summary record
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        status = "SUCCESS" if success else "PARTIAL"
+        total_files = stats['photos'] + stats['videos'] + stats['metadata']
+        size_mb = stats['total_size'] / (1024 * 1024)
+        
+        summary = (
+            f"{timestamp} | {status} | "
+            f"Source: {source} | Dest: {dest} | "
+            f"Files: {total_files} ({stats['photos']} photos, {stats['videos']} videos, "
+            f"{stats['metadata']} metadata) | "
+            f"Size: {size_mb:.1f}MB | Duplicates: {stats['duplicates']} | "
+            f"Errors: {stats['errors']} | History: {self.import_folder_name}\n"
+        )
+        
+        # Append to imports log
+        with open(self.imports_log, 'a', encoding='utf-8') as f:
+            f.write(summary)
+
+
 class Config:
     """Manages configuration file for storing user preferences."""
 
     def __init__(self, config_path: Optional[Path] = None):
-        self.config_path = (config_path or
-                Path.home() / ".config" / "photosort" / "photosort.yml")
+        # New location: ~/.photosort/config.yml
+        if config_path:
+            self.config_path = config_path
+        else:
+            new_config = Path.home() / ".photosort" / "config.yml"
+            old_config = Path.home() / ".config" / "photosort" / "photosort.yml"
+            
+            # Check if old config exists and new doesn't - migrate it
+            if old_config.exists() and not new_config.exists():
+                self._migrate_config(old_config, new_config)
+            
+            self.config_path = new_config
+            
         self.data = self._load_config()
+    
+    def _migrate_config(self, old_path: Path, new_path: Path) -> None:
+        """Migrate config from old location to new location."""
+        try:
+            new_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(old_path, new_path)
+            # Use a logger instance instead of root logger
+            logger = logging.getLogger("photosort")
+            logger.info(f"Migrated config from {old_path} to {new_path}")
+        except Exception as e:
+            logger = logging.getLogger("photosort")
+            logger.warning(f"Could not migrate config: {e}")
 
     def _load_config(self) -> Dict:
         """Load configuration from YAML file."""
@@ -79,7 +210,8 @@ class Config:
             with open(self.config_path, 'r') as f:
                 return yaml.safe_load(f) or {}
         except Exception as e:
-            logging.warning(f"Could not load config: {e}")
+            logger = logging.getLogger("photosort")
+            logger.warning(f"Could not load config: {e}")
             return {}
 
     def save_config(self) -> None:
@@ -89,7 +221,8 @@ class Config:
             with open(self.config_path, 'w') as f:
                 yaml.safe_dump(self.data, f, default_flow_style=False)
         except Exception as e:
-            logging.error(f"Could not save config: {e}")
+            logger = logging.getLogger("photosort")
+            logger.error(f"Could not save config: {e}")
 
     def get_last_source(self) -> Optional[str]:
         """Get the last used source directory."""
@@ -99,10 +232,28 @@ class Config:
         """Get the last used destination directory."""
         return self.data.get('last_dest')
 
+    def get_file_mode(self) -> Optional[str]:
+        """Get the saved file mode setting."""
+        return self.data.get('file_mode')
+
+    def get_group(self) -> Optional[str]:
+        """Get the saved group setting."""
+        return self.data.get('group')
+
     def update_paths(self, source: str, dest: str) -> None:
         """Update and save the last used paths."""
         self.data['last_source'] = source
         self.data['last_dest'] = dest
+        self.save_config()
+
+    def update_file_mode(self, mode: str) -> None:
+        """Update and save the file mode setting."""
+        self.data['file_mode'] = mode
+        self.save_config()
+
+    def update_group(self, group: str) -> None:
+        """Update and save the group setting."""
+        self.data['group'] = group
         self.save_config()
 
 
@@ -110,29 +261,46 @@ class PhotoSorter:
     """Main class for organizing photos and videos."""
 
     def __init__(self, source: Path, dest: Path, dry_run: bool = False,
-                 move_files: bool = True):
+                 move_files: bool = True, file_mode: Optional[int] = None,
+                 group_gid: Optional[int] = None):
         self.source = source
         self.dest = dest
         self.dry_run = dry_run
         self.move_files = move_files
+        self.file_mode = file_mode
+        self.group_gid = group_gid
         self.console = Console()
         self.stats = {
             'photos': 0, 'videos': 0, 'metadata': 0,
             'duplicates': 0, 'errors': 0, 'total_size': 0
         }
 
-        # Setup logging
+        # Setup history manager for import tracking and auxiliary directories
+        self.history_manager = HistoryManager(dest, dry_run)
+
+        # Setup logging with separate console and file levels
+        console_handler = RichHandler(console=self.console, rich_tracebacks=True)
+        console_handler.setLevel(logging.WARNING)  # Only WARNING and ERROR to console
+        console_handler.setFormatter(logging.Formatter("%(message)s"))
+        
         logging.basicConfig(
-            level=logging.INFO,
+            level=logging.DEBUG,  # Allow all messages to reach handlers
             format="%(message)s",
             datefmt="[%X]",
-            handlers=[RichHandler(console=self.console, rich_tracebacks=True)]
+            handlers=[console_handler]
         )
         self.logger = logging.getLogger("photosort")
+        
+        # Setup import-specific logging
+        self.history_manager.setup_import_logger(self.logger)
+        
+        # Log the start of import session
+        self.logger.info(f"Starting PhotoSorter session: {self.source} -> {self.dest}")
+        self.logger.info(f"Mode: {'DRY RUN' if self.dry_run else 'MOVE' if self.move_files else 'COPY'}")
 
-        # Set up directory paths
-        self.error_dir = self.dest / "Unsorted"
-        self.metadata_dir = self.dest / "Metadata"
+        # Set up directory paths - now using history manager
+        self.error_dir = self.history_manager.get_unsorted_dir()
+        self.metadata_dir = self.history_manager.get_metadata_dir()
         
         # Create main destination directory
         if not self.dry_run:
@@ -147,6 +315,26 @@ class PhotoSorter:
         """Create metadata directory if needed and not in dry-run mode."""
         if not self.dry_run and not self.metadata_dir.exists():
             self.metadata_dir.mkdir(exist_ok=True)
+
+    def _apply_file_permissions(self, file_path: Path, mode: Optional[int]) -> None:
+        """Apply file permissions if mode is specified."""
+        if self.dry_run or mode is None:
+            return
+            
+        try:
+            os.chmod(file_path, mode)
+        except Exception as e:
+            self.logger.error(f"Failed to set permissions on {file_path}: {e}")
+
+    def _apply_file_group(self, file_path: Path, gid: Optional[int]) -> None:
+        """Apply file group ownership if gid is specified."""
+        if self.dry_run or gid is None:
+            return
+            
+        try:
+            os.chown(file_path, -1, gid)  # -1 preserves current owner
+        except Exception as e:
+            self.logger.error(f"Failed to set group on {file_path}: {e}")
 
     def get_creation_date(self, file_path: Path) -> datetime:
         """Extract creation date from file metadata."""
@@ -227,7 +415,7 @@ class PhotoSorter:
         month = f"{creation_date.month:02d}"
 
         # Format filename with timestamp
-        timestamp = creation_date.strftime("%Y-%m-%d %H-%M-%S")
+        timestamp = creation_date.strftime("%Y-%m-%d_%H-%M-%S")
         ext = file_path.suffix.lower()
 
         # Normalize JPG extensions
@@ -253,6 +441,7 @@ class PhotoSorter:
         if not metadata_files:
             return
 
+        self.logger.info(f"Processing {len(metadata_files)} metadata files")
         self._ensure_metadata_dir()
         for file_path in metadata_files:
             try:
@@ -295,6 +484,12 @@ class PhotoSorter:
             if self.move_files and source.exists():
                 raise FileExistsError(f"Source file still exists after move: {source}")
 
+            # Apply file permissions if specified
+            self._apply_file_permissions(dest, self.file_mode)
+            
+            # Apply file group ownership if specified
+            self._apply_file_group(dest, self.group_gid)
+
             return True
 
         except Exception as e:
@@ -303,6 +498,7 @@ class PhotoSorter:
 
     def process_files(self, files: List[Path]) -> None:
         """Process all files with progress tracking."""
+        self.logger.info(f"Starting to process {len(files)} files")
         with Progress(console=self.console) as progress:
             task = progress.add_task("Processing files...", total=len(files))
 
@@ -401,7 +597,19 @@ class PhotoSorter:
             self.console.print(f"\n[red]Problematic files moved to: {self.error_dir}[/red]")
 
 
-def cleanup_source_directory(source: Path, dest: Path, console: Console) -> None:
+def set_directory_groups(dest_path: Path, group_name: str, console: Console) -> None:
+    """Set group ownership on all directories in destination path."""
+    try:
+        result = subprocess.run(
+            ["find", str(dest_path), "-type", "d", "-exec", "chgrp", group_name, "{}", "+"],
+            capture_output=True, text=True, check=True
+        )
+        console.print(f"Applied group '{group_name}' to destination directories")
+    except subprocess.CalledProcessError as e:
+        console.print(f"[yellow]Warning: Could not set group on directories: {e}[/yellow]")
+
+
+def cleanup_source_directory(source: Path, history_manager: HistoryManager, console: Console) -> None:
     """Clean up source directory by removing empty folders and moving unknown files."""
     if not any(source.iterdir()):
         return
@@ -429,12 +637,12 @@ def cleanup_source_directory(source: Path, dest: Path, console: Console) -> None
             except OSError:
                 pass
 
-    # Move remaining unknown files
+    # Move remaining unknown files to history folder
     unknowns = list(source.glob("*"))
     if unknowns:
         console.print(f"Moving {len(unknowns)} unknown files...")
-        unkpath = dest / "UnknownFiles"
-        unkpath.mkdir(exist_ok=True)
+        unkpath = history_manager.get_unknown_files_dir()
+        unkpath.mkdir(parents=True, exist_ok=True)
         for remaining in unknowns:
             shutil.move(remaining, unkpath / remaining.name)
 
@@ -443,15 +651,27 @@ def create_parser(config: Config) -> argparse.ArgumentParser:
     """Create argument parser with dynamic defaults from config."""
     last_source = config.get_last_source()
     last_dest = config.get_last_dest()
+    file_mode = config.get_file_mode()
+    group = config.get_group()
 
     # Create help text that shows current defaults
     source_help = "Source directory containing photos to organize"
     dest_help = "Destination directory for organized photos"
+    mode_help = "File permissions mode in octal format (e.g., 644, 664, 400)"
+    group_help = "Group ownership for organized files (e.g., staff, users, wheel)"
 
     if last_source:
         source_help += f" (default: {last_source})"
     if last_dest:
         dest_help += f" (default: {last_dest})"
+    if file_mode:
+        mode_help += f" (default: {file_mode})"
+    else:
+        mode_help += " (default: system umask)"
+    if group:
+        group_help += f" (default: {group})"
+    else:
+        group_help += " (default: user primary group)"
 
     parser = argparse.ArgumentParser(
         description="Organize photos and videos into year/month folder structure",
@@ -492,8 +712,47 @@ Examples:
         "--verbose", "-v", action="store_true",
         help="Enable verbose logging"
     )
+    parser.add_argument(
+        "--mode", "-m", type=str, metavar="MODE",
+        help=mode_help
+    )
+    parser.add_argument(
+        "--group", "-g", type=str, metavar="GROUP",
+        help=group_help
+    )
 
     return parser
+
+
+def parse_file_mode(mode_str: str) -> int:
+    """Convert octal string (e.g., '644') to integer mode."""
+    try:
+        # Ensure it's a valid octal string (3-4 digits, 0-7 only)
+        if not re.match(r'^[0-7]{3,4}$', mode_str):
+            raise ValueError(f"Invalid mode format: {mode_str}")
+        return int(mode_str, 8)
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(f"Invalid file mode: {e}")
+
+
+def get_system_default_mode() -> int:
+    """Get system default file mode based on umask."""
+    current_umask = os.umask(0)
+    os.umask(current_umask)
+    return 0o666 & ~current_umask  # Apply umask to base file permissions
+
+
+def parse_group(group_str: str) -> int:
+    """Convert group name to GID with validation."""
+    try:
+        return grp.getgrnam(group_str).gr_gid
+    except KeyError:
+        raise argparse.ArgumentTypeError(f"Group '{group_str}' not found on system")
+
+
+def get_system_default_group() -> int:
+    """Get user's primary group GID."""
+    return os.getgid()
 
 
 def main() -> int:
@@ -526,6 +785,38 @@ def main() -> int:
     # Update config with current paths
     config.update_paths(str(source), str(dest))
 
+    # Handle file mode argument
+    file_mode = None
+    if args.mode:
+        try:
+            file_mode = parse_file_mode(args.mode)
+            config.update_file_mode(args.mode)
+        except argparse.ArgumentTypeError as e:
+            print(f"Error: {e}")
+            return 1
+    elif config.get_file_mode():
+        try:
+            file_mode = parse_file_mode(config.get_file_mode())
+        except Exception:
+            # If saved mode is invalid, use system default
+            file_mode = None
+
+    # Handle group argument
+    group_gid = None
+    if args.group:
+        try:
+            group_gid = parse_group(args.group)
+            config.update_group(args.group)
+        except argparse.ArgumentTypeError as e:
+            print(f"Error: {e}")
+            return 1
+    elif config.get_group():
+        try:
+            group_gid = parse_group(config.get_group())
+        except Exception:
+            # If saved group is invalid, use system default
+            group_gid = None
+
     # Set up logging level
     if args.verbose:
         logging.getLogger("photosort").setLevel(logging.DEBUG)
@@ -535,7 +826,9 @@ def main() -> int:
         source=source,
         dest=dest,
         dry_run=args.dry_run,
-        move_files=not args.copy
+        move_files=not args.copy,
+        file_mode=file_mode,
+        group_gid=group_gid
     )
 
     console = Console()
@@ -569,11 +862,20 @@ def main() -> int:
 
         # If moving files (and not dry-run), clean up the source directory
         if not args.copy and not args.dry_run:
-            cleanup_source_directory(source, dest, console)
+            cleanup_source_directory(source, sorter.history_manager, console)
 
         sorter.print_summary()
 
-        if sorter.stats['errors'] == 0:
+        # Apply group to directories if specified
+        if group_gid is not None and not args.dry_run:
+            group_name = config.get_group() or args.group
+            set_directory_groups(dest, group_name, console)
+
+        # Log import summary to global imports.log
+        success = sorter.stats['errors'] == 0
+        sorter.history_manager.log_import_summary(source, dest, sorter.stats, success)
+
+        if success:
             console.print("\n[green]✓ Processing completed successfully![/green]")
             return 0
         else:

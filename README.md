@@ -1,19 +1,26 @@
 # Photosort
 
-A modern Python tool for organizing photos and videos into a clean year/month folder structure based on creation dates.
+A modern Python tool for organizing photos and videos into a clean year/month folder structure based on creation dates, with comprehensive file ownership control and complete import history tracking.
 
 ## Features
 
+### Core Organization
 - **Smart Organization**: Automatically sorts photos and videos by creation date into `YYYY/MM/` folders
 - **Live Photo Friendly**: Photos and videos in same folders for better photo management software support
 - **Multiple Media Types**: Supports photos (JPG, RAW formats), videos, and handles metadata files separately
-- **Metadata Separation**: Apple .AAE files and other metadata moved to dedicated `Metadata/` directory
+- **Clean Destinations**: Only organized media in destination folders - auxiliary files moved to history
 - **Auto Source Cleanup**: Automatically cleans and removes empty directories from source after moving
-- **Safe Operations**: Moves files with validation to prevent data loss
 - **Duplicate Detection**: Intelligent deduplication based on file size and content hashing
-- **Progress Tracking**: Rich progress bars and detailed reporting
-- **Remembers Settings**: Stores your preferred source and destination paths
 - **macOS Optimized**: Uses native `sips` command for accurate photo metadata extraction
+
+### Advanced Features
+- **File Permissions**: Set custom file permissions (e.g., 644, 600) with persistent defaults
+- **Group Ownership**: Configure group ownership for files and directories with system validation
+- **Import History**: Complete audit trail with timestamped sessions in `~/.photosort/history/`
+- **Dual Logging**: Console shows progress, detailed logs saved per import session
+- **Safe Operations**: Moves files with validation and ownership control
+- **Progress Tracking**: Rich progress bars and detailed reporting
+- **Remembers Settings**: Stores all preferences (paths, permissions, groups) with dynamic help
 
 ## Installation
 
@@ -54,9 +61,22 @@ photosort
 photosort --source ~/Desktop/NewPhotos --dest ~/Pictures/Archive
 ```
 
+### File Ownership Control
+
+```bash
+# Set file permissions (saved as new default)
+photosort --mode 644 ~/source ~/dest
+
+# Set group ownership (saved as new default)  
+photosort --group staff ~/source ~/dest
+
+# Combine permissions and group
+photosort --mode 600 --group wheel ~/source ~/dest
+```
+
 ### Configuration
 
-Photosort remembers your last used source and destination paths in `~/.config/photosort.yml`. The help message shows your current configured defaults:
+Photosort remembers your preferences in `~/.photosort/config.yml`. The help message shows your current configured defaults:
 
 ```bash
 photosort --help
@@ -64,29 +84,50 @@ photosort --help
 
 ### Options
 
+#### File Management
 - `--source`, `-s`: Source directory containing photos to organize
 - `--dest`, `-d`: Destination directory for organized photos
-- `--dry-run`: Preview operations without making changes
-- `--copy`: Copy files instead of moving them (default is to move)
-- `--verbose`, `-v`: Detailed logging output
+- `--dry-run`, `-n`: Preview operations without making changes
+- `--copy`, `-c`: Copy files instead of moving them (default is to move)
+- `--verbose`, `-v`: Enable detailed logging
+
+#### File Ownership
+- `--mode`, `-m`: File permissions in octal format (e.g., 644, 664, 400)
+- `--group`, `-g`: Group ownership (e.g., staff, users, wheel)
 
 ## File Organization
 
-Photos and videos are organized into this structure:
+### Clean Destination Structure
+
+Photos and videos are organized into this clean structure:
 ```
 Destination/
 ├── 2024/
 │   ├── 01/
-│   │   ├── 2024-01-15 14-30-22.jpg
-│   │   ├── 2024-01-15 16-45-10.mp4  # Videos alongside photos
-│   │   └── 2024-01-20 12-30-45.jpg
+│   │   ├── 2024-01-15_14-30-22.jpg
+│   │   ├── 2024-01-15_16-45-10.mp4  # Videos alongside photos
+│   │   └── 2024-01-20_12-30-45.jpg
 │   └── 02/
-│       └── 2024-02-03 09-15-33.jpg
-├── Metadata/           # Apple .AAE files and other metadata
-│   ├── IMG_1234.aae
-│   └── config.xml
-├── UnknownFiles/       # Unrecognized file types
-└── Unsorted/          # Files that couldn't be processed
+│       └── 2024-02-03_09-15-33.jpg
+```
+
+### Import History Structure
+
+All auxiliary files are preserved in a searchable history:
+```
+~/.photosort/
+├── config.yml                         # Your saved preferences
+├── imports.log                        # Global import summary log
+└── history/                           # Per-import session history
+    ├── 2024-06-26+Pictures-Organized/
+    │   ├── import.log                 # Detailed logs for this import
+    │   ├── Metadata/                  # Apple .AAE files and other metadata
+    │   │   ├── IMG_1234.aae
+    │   │   └── config.xml
+    │   ├── UnknownFiles/              # Unrecognized file types
+    │   └── Unsorted/                  # Files that couldn't be processed
+    └── 2024-06-25+Archive-Photos/
+        └── (similar structure)
 ```
 
 ## Supported Formats
@@ -106,7 +147,7 @@ Destination/
 - XML, JSON, PLIST configuration files
 - INI, CFG, DAT data files
 - LOG, TXT documentation files
-- All moved to separate `Metadata/` directory
+- All moved to import history `Metadata/` directory
 
 ## Requirements
 
@@ -120,9 +161,10 @@ If you were using the old `organize-photos.py` script:
 
 1. Your existing organized photos remain unchanged
 2. Install photosort as shown above
-3. First run will ask for your source/destination preferences
-4. New features: metadata separation, source cleanup, no movies subfolder
+3. Configuration automatically migrates from `~/.config/photosort/` to `~/.photosort/`
+4. New features: import history, file ownership control, metadata separation, source cleanup
 5. Live Photos will work better with photo management software
+6. Destination folders stay clean with auxiliary files in searchable history
 
 ## Development
 
