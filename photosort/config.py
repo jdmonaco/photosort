@@ -14,32 +14,13 @@ class Config:
     """Manages configuration file for storing user preferences."""
 
     def __init__(self, config_path: Optional[Path] = None):
-        # New location: ~/.photosort/config.yml
+        # Default config location: ~/.photosort/config.yml
         if config_path:
             self.config_path = config_path
         else:
-            new_config = Path.home() / ".photosort" / "config.yml"
-            old_config = Path.home() / ".config" / "photosort" / "photosort.yml"
-            
-            # Check if old config exists and new doesn't - migrate it
-            if old_config.exists() and not new_config.exists():
-                self._migrate_config(old_config, new_config)
-            
-            self.config_path = new_config
-            
+            self.config_path = Path.home() / ".photosort" / "config.yml"
+
         self.data = self._load_config()
-    
-    def _migrate_config(self, old_path: Path, new_path: Path) -> None:
-        """Migrate config from old location to new location."""
-        try:
-            new_path.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(old_path, new_path)
-            # Use a logger instance instead of root logger
-            logger = logging.getLogger("photosort")
-            logger.info(f"Migrated config from {old_path} to {new_path}")
-        except Exception as e:
-            logger = logging.getLogger("photosort")
-            logger.warning(f"Could not migrate config: {e}")
 
     def _load_config(self) -> Dict:
         """Load configuration from YAML file."""

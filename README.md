@@ -155,17 +155,6 @@ All auxiliary files are preserved in a searchable history:
 - **Python 3.8+**
 - Dependencies: `rich`, `pyyaml`
 
-## Migration from organize-photos.py
-
-If you were using the old `organize-photos.py` script:
-
-1. Your existing organized photos remain unchanged
-2. Install photosort as shown above
-3. Configuration automatically migrates from `~/.config/photosort/` to `~/.photosort/`
-4. New features: import history, file ownership control, metadata separation, source cleanup
-5. Live Photos will work better with photo management software
-6. Destination folders stay clean with auxiliary files in searchable history
-
 ## Development
 
 ```bash

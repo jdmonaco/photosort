@@ -149,7 +149,6 @@ The `Config` class manages `~/.photosort/config.yml`:
 - **Permission preferences**: Stores file mode (e.g., 644) and group ownership settings
 - **Dynamic CLI help**: Shows current configured defaults in help text
 - **Auto-update**: Configuration updates when user specifies new values
-- **Migration support**: Automatically migrates from old `~/.config/photosort/` location
 - **Graceful fallback**: Handles missing/corrupted config files without errors
 - **YAML format**: Human-readable configuration file format
 
