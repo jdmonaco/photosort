@@ -181,7 +181,7 @@ class PhotoSorter:
         month = f"{creation_date.month:02d}"
 
         # Format filename with timestamp
-        timestamp = creation_date.strftime("%Y-%m-%d_%H-%M-%S")
+        timestamp = creation_date.strftime("%Y%m%d_%H%M%S")
         ext = file_path.suffix.lower()
 
         # Normalize JPG extensions
@@ -194,11 +194,11 @@ class PhotoSorter:
         # Handle filename conflicts
         base_name = timestamp
         dest_file = dest_dir / f"{base_name}{ext}"
-        suffix = 'a'
+        counter = 1
 
         while dest_file.exists() and not self.is_duplicate(file_path, dest_file):
-            dest_file = dest_dir / f"{base_name}{suffix}{ext}"
-            suffix = chr(ord(suffix) + 1)
+            dest_file = dest_dir / f"{base_name}_{counter:03d}{ext}"
+            counter += 1
 
         return dest_file
 
@@ -333,7 +333,7 @@ class PhotoSorter:
             while error_dest.exists():
                 stem = file_path.stem
                 suffix = file_path.suffix
-                error_dest = self.error_dir / f"{stem}_{counter}{suffix}"
+                error_dest = self.error_dir / f"{stem}_{counter:03d}{suffix}"
                 counter += 1
 
             shutil.copy2(str(file_path), str(error_dest))
