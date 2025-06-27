@@ -17,7 +17,7 @@ from rich.progress import Progress, TaskID
 from rich.table import Table
 
 from .constants import (
-    JPG_EXTENSIONS, METADATA_EXTENSIONS, MOVIE_EXTENSIONS, 
+    JPG_EXTENSIONS, METADATA_EXTENSIONS, MOVIE_EXTENSIONS,
     PHOTO_EXTENSIONS, VALID_EXTENSIONS
 )
 from .history import HistoryManager
@@ -48,7 +48,7 @@ class PhotoSorter:
         console_handler = RichHandler(console=self.console, rich_tracebacks=True)
         console_handler.setLevel(logging.WARNING)  # Only WARNING and ERROR to console
         console_handler.setFormatter(logging.Formatter("%(message)s"))
-        
+
         logging.basicConfig(
             level=logging.DEBUG,  # Allow all messages to reach handlers
             format="%(message)s",
@@ -56,10 +56,10 @@ class PhotoSorter:
             handlers=[console_handler]
         )
         self.logger = logging.getLogger("photosort")
-        
+
         # Setup import-specific logging
         self.history_manager.setup_import_logger(self.logger)
-        
+
         # Log the start of import session
         self.logger.info(f"Starting PhotoSorter session: {self.source} -> {self.dest}")
         self.logger.info(f"Mode: {'DRY RUN' if self.dry_run else 'MOVE' if self.move_files else 'COPY'}")
@@ -67,7 +67,7 @@ class PhotoSorter:
         # Set up directory paths - now using history manager
         self.error_dir = self.history_manager.get_unsorted_dir()
         self.metadata_dir = self.history_manager.get_metadata_dir()
-        
+
         # Create main destination directory
         if not self.dry_run:
             self.dest.mkdir(parents=True, exist_ok=True)
@@ -86,7 +86,7 @@ class PhotoSorter:
         """Apply file permissions if mode is specified."""
         if self.dry_run or mode is None:
             return
-            
+
         try:
             os.chmod(file_path, mode)
         except Exception as e:
@@ -96,7 +96,7 @@ class PhotoSorter:
         """Apply file group ownership if gid is specified."""
         if self.dry_run or gid is None:
             return
-            
+
         try:
             os.chown(file_path, -1, gid)  # -1 preserves current owner
         except Exception as e:
@@ -252,9 +252,12 @@ class PhotoSorter:
 
             # Apply file permissions if specified
             self._apply_file_permissions(dest, self.file_mode)
-            
+
             # Apply file group ownership if specified
             self._apply_file_group(dest, self.group_gid)
+
+            # Log the successful move
+            self.logger.info(f" * {source} -> {dest}")
 
             return True
 
@@ -294,7 +297,7 @@ class PhotoSorter:
         if dest_path.exists() and self.is_duplicate(file_path, dest_path):
             self.stats['duplicates'] += 1
             progress.update(task, description=f"Skipping duplicate: {file_path.name}")
-            
+
             # Delete the duplicate source file if we're moving files
             if self.move_files and not self.dry_run:
                 try:
@@ -302,7 +305,7 @@ class PhotoSorter:
                     self.logger.debug(f"Deleted duplicate source file: {file_path}")
                 except Exception as e:
                     self.logger.warning(f"Could not delete duplicate source file {file_path}: {e}")
-            
+
             return
 
         # Move main file
