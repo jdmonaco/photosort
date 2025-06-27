@@ -8,11 +8,29 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Architecture
 
+### Package Structure (Multi-Module)
+Photosort is organized as a Python package with clear separation of concerns:
+
+```
+photosort/
+├── __init__.py          # Package init with public API
+├── cli.py              # Command-line interface and main entry point
+├── config.py           # Configuration management (Config class)
+├── constants.py        # File extension constants and settings
+├── core.py             # Core photo sorting logic (PhotoSorter class)
+├── history.py          # Import history management (HistoryManager class)
+├── permissions.py      # File permissions and group ownership utilities
+└── utils.py            # General utility functions
+```
+
 ### Core Components
-- **`photosort.py`**: Main script with class-based architecture
-- **`PhotoSorter` class**: Handles the multi-phase processing workflow
-- **`Config` class**: Manages YAML configuration and remembers user preferences
-- **`HistoryManager` class**: Manages import history, logging, and auxiliary file placement
+- **`photosort.cli`**: CLI argument parsing and main entry point
+- **`photosort.core.PhotoSorter`**: Handles the multi-phase processing workflow
+- **`photosort.config.Config`**: Manages YAML configuration and remembers user preferences
+- **`photosort.history.HistoryManager`**: Manages import history, logging, and auxiliary file placement
+- **`photosort.constants`**: File extension definitions and configuration constants
+- **`photosort.permissions`**: File mode and group ownership utilities
+- **`photosort.utils`**: Source directory cleanup and general utilities
 - **Rich UI**: Progress bars, tables, and colored console output
 
 ### Key Features
@@ -34,7 +52,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **UV-compatible**: Defined in `pyproject.toml` with proper dependencies
 - **Tool installation**: `uv tool install .` creates isolated environment
 - **Dependencies**: `rich` (UI), `pyyaml` (config)
-- **Entry point**: `photosort` command runs `photosort:main`
+- **Entry point**: `photosort` command runs `photosort.cli:main`
 
 ## Development Commands
 
@@ -52,10 +70,10 @@ uv tool install .
 uv run pytest
 
 # Code formatting
-uv run black photosort.py
+uv run black photosort/
 
 # Type checking
-uv run mypy photosort.py
+uv run mypy photosort/
 ```
 
 ## File Organization
@@ -80,37 +98,60 @@ Output structure: `YYYY/MM/YYYY-MM-DD_HH-MM-SS.ext`
 - Source directory is automatically cleaned when moving files
 - All auxiliary files preserved in searchable history
 
-## Key Functions
+## Key Functions by Module
 
-### Core Processing
+### Core Processing (`photosort.core`)
 - `PhotoSorter.process_files()`: Main media file processing with progress tracking
 - `PhotoSorter.process_metadata_files()`: Handles metadata files separately
-- `cleanup_source_directory()`: Module function for post-processing source cleanup
-- `set_directory_groups()`: Applies group ownership to destination directories
+- `PhotoSorter.get_creation_date()`: Extracts creation date from file metadata
+- `PhotoSorter.is_duplicate()`: Advanced duplicate detection with size/hash comparison
+- `PhotoSorter.get_destination_path()`: Generates timestamped destination paths
 
-### File Discovery
-- `find_source_files()`: Returns tuple of (media_files, metadata_files)
+### File Discovery (`photosort.core`)
+- `PhotoSorter.find_source_files()`: Returns tuple of (media_files, metadata_files)
 - Separates processing streams for different file types
 
-### History Management
+### History Management (`photosort.history`)
 - `HistoryManager.__init__()`: Creates timestamped import folders
 - `HistoryManager.setup_import_logger()`: Configures per-import logging
 - `HistoryManager.log_import_summary()`: Records import summary to global log
+- `HistoryManager.get_metadata_dir()`: Path for metadata files in history
+- `HistoryManager.get_unsorted_dir()`: Path for problematic files
 
-### File Permissions
+### File Permissions (`photosort.permissions`)
 - `parse_file_mode()`: Validates and converts octal mode strings
 - `parse_group()`: Validates group names against system groups
-- `PhotoSorter._apply_file_permissions()`: Sets file permissions post-move
-- `PhotoSorter._apply_file_group()`: Sets file group ownership post-move
+- `set_directory_groups()`: Applies group ownership to destination directories
+- `get_system_default_mode()`: Gets system default file mode from umask
 
-## Configuration System
+### Configuration (`photosort.config`)
+- `Config.get_last_source()`: Retrieves saved source directory
+- `Config.get_last_dest()`: Retrieves saved destination directory
+- `Config.update_paths()`: Saves new source/destination paths
+- `Config.update_file_mode()`: Saves file permission preferences
+- `Config.update_group()`: Saves group ownership preferences
+
+### Utilities (`photosort.utils`)
+- `cleanup_source_directory()`: Post-processing source cleanup
+- Removes empty directories and nuisance files
+- Moves unknown files to history directory
+
+### Constants (`photosort.constants`)
+- `PHOTO_EXTENSIONS`: Supported photo file extensions
+- `MOVIE_EXTENSIONS`: Supported video file extensions
+- `METADATA_EXTENSIONS`: Metadata file extensions
+- `NUISANCE_EXTENSIONS`: System files to remove during cleanup
+
+## Configuration System (`photosort.config`)
 
 The `Config` class manages `~/.photosort/config.yml`:
-- Remembers last source/destination paths, file mode, and group preferences
-- Updates automatically when user specifies new values
-- CLI help shows current configured defaults
-- Graceful fallback if config is missing/corrupted
-- Config migration from old `~/.config/photosort/` location
+- **Path memory**: Remembers last source/destination paths automatically
+- **Permission preferences**: Stores file mode (e.g., 644) and group ownership settings
+- **Dynamic CLI help**: Shows current configured defaults in help text
+- **Auto-update**: Configuration updates when user specifies new values
+- **Migration support**: Automatically migrates from old `~/.config/photosort/` location
+- **Graceful fallback**: Handles missing/corrupted config files without errors
+- **YAML format**: Human-readable configuration file format
 
 ## Error Handling
 
@@ -138,3 +179,50 @@ The `Config` class manages `~/.photosort/config.yml`:
 ### Other Options
 - `--verbose, -v`: Enable debug logging to import.log
 - `--help`: Shows dynamic help with current configured defaults
+
+## Public API (`photosort.__init__.py`)
+
+The package exports these key classes and functions:
+- `photosort.main`: Main CLI entry point function
+- `photosort.Config`: Configuration management class
+- `photosort.PhotoSorter`: Core photo sorting class
+- `photosort.HistoryManager`: Import history management class
+
+### Usage Examples
+
+```python
+# Direct API usage
+from photosort import Config, PhotoSorter
+from pathlib import Path
+
+config = Config()
+sorter = PhotoSorter(
+    source=Path("~/Downloads/Photos"), 
+    dest=Path("~/Pictures/Organized"),
+    dry_run=True
+)
+media_files, metadata_files = sorter.find_source_files()
+sorter.process_files(media_files)
+```
+
+## Development Notes
+
+### Module Dependencies
+- `cli.py` → `config.py`, `core.py`, `permissions.py`, `utils.py`
+- `core.py` → `constants.py`, `history.py` 
+- `utils.py` → `constants.py`, `history.py`
+- `permissions.py` → standalone (only system modules)
+- `config.py` → standalone (only system modules + yaml)
+- `history.py` → standalone (only system modules)
+- `constants.py` → standalone (no dependencies)
+
+### Testing Strategy
+- **Unit tests**: Each module can be tested independently
+- **Integration tests**: CLI functionality and end-to-end workflows
+- **Mock testing**: File operations for safe testing without actual file moves
+
+### Extensibility Points
+- **New file formats**: Add to `constants.py` extension lists
+- **Custom processors**: Subclass `PhotoSorter` for specialized behavior
+- **Alternative storage**: Implement custom `HistoryManager` subclasses
+- **Plugin system**: Future enhancement for custom processing pipelines

@@ -35,7 +35,7 @@ classifiers = [
 ]
 
 [project.scripts]
-photosort = "photosort:main"
+photosort = "photosort.cli:main"
 
 [project.urls]
 Repository = "https://github.com/your-username/photosort"
