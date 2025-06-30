@@ -21,6 +21,7 @@ def create_parser(config: Config) -> argparse.ArgumentParser:
     last_dest = config.get_last_dest()
     file_mode = config.get_file_mode()
     group = config.get_group()
+    convert_videos = config.get_convert_videos()
 
     # Create help text that shows current defaults
     source_help = "Source directory containing photos to organize"
@@ -88,6 +89,16 @@ Examples:
         "--group", "-g", type=str, metavar="GROUP",
         help=group_help
     )
+    video_help = "Disable automatic conversion of legacy video formats to H.265/MP4"
+    if convert_videos:
+        video_help += " (conversion enabled)"
+    else:
+        video_help += " (conversion disabled)"
+
+    parser.add_argument(
+        "--no-convert-videos", action="store_true",
+        help=video_help
+    )
 
     return parser
 
@@ -117,6 +128,12 @@ def main() -> int:
 
     if not source.is_dir():
         print(f"Error: Source is not a directory: {source}")
+        return 1
+
+    if source == dest or source in dest.parents or dest in source.parents:
+        print("Error: Separate import/target folders are required:")
+        print(f" - Source:      {source}")
+        print(f" - Destination: {dest}")
         return 1
 
     # Update config with current paths
@@ -154,6 +171,15 @@ def main() -> int:
             # If saved group is invalid, use system default
             group_gid = None
 
+    # Handle video conversion setting
+    convert_videos = not args.no_convert_videos  # Invert since flag disables conversion
+    if args.no_convert_videos and config.get_convert_videos():
+        # User is disabling conversion, save this preference
+        config.update_convert_videos(False)
+    elif not args.no_convert_videos and not config.get_convert_videos():
+        # User is re-enabling conversion (default behavior), save this preference
+        config.update_convert_videos(True)
+
     # Set up logging level
     if args.verbose:
         logging.getLogger("photosort").setLevel(logging.DEBUG)
@@ -165,7 +191,8 @@ def main() -> int:
         dry_run=args.dry_run,
         move_files=not args.copy,
         file_mode=file_mode,
-        group_gid=group_gid
+        group_gid=group_gid,
+        convert_videos=convert_videos
     )
 
     console = Console()

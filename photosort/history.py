@@ -87,6 +87,10 @@ class HistoryManager:
         """Get path for problematic files in import history."""
         return self.import_folder / "Unsorted"
     
+    def get_legacy_videos_dir(self) -> Path:
+        """Get path for legacy video files in import history."""
+        return self.import_folder / "LegacyVideos"
+    
     def log_import_summary(self, source: Path, dest: Path, stats: Dict, success: bool) -> None:
         """Log import summary to global imports.log."""
         if self.dry_run:
@@ -101,13 +105,17 @@ class HistoryManager:
         total_files = stats['photos'] + stats['videos'] + stats['metadata']
         size_mb = stats['total_size'] / (1024 * 1024)
         
+        converted_info = ""
+        if stats.get('converted_videos', 0) > 0:
+            converted_info = f" | Converted: {stats['converted_videos']} videos"
+        
         summary = (
             f"{timestamp} | {status} | "
             f"Source: {source} | Dest: {dest} | "
             f"Files: {total_files} ({stats['photos']} photos, {stats['videos']} videos, "
             f"{stats['metadata']} metadata) | "
             f"Size: {size_mb:.1f}MB | Duplicates: {stats['duplicates']} | "
-            f"Errors: {stats['errors']} | History: {self.import_folder_name}\n"
+            f"Errors: {stats['errors']}{converted_info} | History: {self.import_folder_name}\n"
         )
         
         # Append to imports log

@@ -61,6 +61,10 @@ class Config:
         """Get the saved group setting."""
         return self.data.get('group')
 
+    def get_convert_videos(self) -> bool:
+        """Get the video conversion setting (default: True)."""
+        return self.data.get('convert_videos', True)
+
     def update_paths(self, source: str, dest: str) -> None:
         """Update and save the last used paths."""
         self.data['last_source'] = source
@@ -75,4 +79,9 @@ class Config:
     def update_group(self, group: str) -> None:
         """Update and save the group setting."""
         self.data['group'] = group
+        self.save_config()
+
+    def update_convert_videos(self, convert_videos: bool) -> None:
+        """Update and save the video conversion setting."""
+        self.data['convert_videos'] = convert_videos
         self.save_config()

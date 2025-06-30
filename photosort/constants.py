@@ -25,6 +25,9 @@ MOVIE_EXTENSIONS = (
     ".scm", ".smil", ".snagproj", ".sqz", ".stx", ".swi", ".tix", ".trp",
     ".ts", ".veg", ".vf", ".vro", ".webm", ".wlmp", ".wtv", ".xvid", ".yuv",
 )
+MODERN_VIDEO_CODECS = (
+    "h264", "avc", "h.264", "h265", "hevc", "h.265", "av1", "av01"
+)
 METADATA_EXTENSIONS = (
     ".aae", ".dat", ".ini", ".cfg", ".xml", ".plist", ".json", ".txt", ".log",
     ".info", ".meta", ".properties", ".conf", ".config", ".xmp"
@@ -33,6 +36,3 @@ NUISANCE_EXTENSIONS = (
     ".ds_store", ".thumbs.db", ".desktop.ini", "thumbs.db"
 )
 VALID_EXTENSIONS = PHOTO_EXTENSIONS + MOVIE_EXTENSIONS
-
-# TODO: Future enhancement - Add ffmpeg video conversion for legacy formats
-# Goal: Convert old formats (mpg, 3gp, etc.) to modern mp4/h264

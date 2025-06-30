@@ -12,7 +12,8 @@ __version__ = "2.0.0"
 # Public API
 from .cli import main
 from .config import Config
+from .conversion import VideoConverter
 from .core import PhotoSorter
 from .history import HistoryManager
 
-__all__ = ["main", "Config", "PhotoSorter", "HistoryManager"]
+__all__ = ["main", "Config", "VideoConverter", "PhotoSorter", "HistoryManager"]
