@@ -3,11 +3,14 @@ Core photo sorting functionality.
 """
 
 import hashlib
+import json
 import logging
 import os
+import re
 import shutil
 import subprocess
-from datetime import datetime
+import zoneinfo
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -114,13 +117,123 @@ class PhotoSorter:
         except Exception as e:
             self.logger.error(f"Failed to set group on {file_path}: {e}")
 
+    def _get_video_creation_date(self, file_path: Path) -> Optional[datetime]:
+        """Extract creation date from video metadata using ffprobe with Apple QuickTime priority."""
+        try:
+            # Use ffprobe to get format metadata as JSON
+            result = subprocess.run([
+                "ffprobe", "-v", "quiet", "-print_format", "json",
+                "-show_format", str(file_path)
+            ], capture_output=True, text=True, check=True)
+
+            # Parse JSON output
+            data = json.loads(result.stdout)
+            tags = data.get("format", {}).get("tags", {})
+
+            if not tags:
+                self.logger.debug(f"No format tags found in video metadata for {file_path}")
+                return None
+
+            # Priority 1: Standard creation_time tag
+            standard_date = tags.get("creation_time")
+            if standard_date:
+                creation_time = self._parse_iso8601_to_est(standard_date)
+                if creation_time:
+                    self.logger.debug(f"Using standard creation_time: {creation_time} from {file_path}")
+                    return creation_time
+
+            # Priority 2: Apple QuickTime creation date (for Live Photo compatibility)
+            apple_date = tags.get("com.apple.quicktime.creationdate")
+            if apple_date:
+                creation_time = self._parse_iso8601_to_est(apple_date)
+                if creation_time:
+                    self.logger.debug(f"Using Apple QuickTime creation date: {creation_time} from {file_path}")
+                    return creation_time
+
+            self.logger.debug(f"No usable creation date tags found in video metadata for {file_path}")
+            return None
+
+        except subprocess.CalledProcessError as e:
+            self.logger.debug(f"ffprobe failed for {file_path}: {e}")
+            return None
+        except json.JSONDecodeError as e:
+            self.logger.debug(f"Failed to parse ffprobe JSON output for {file_path}: {e}")
+            return None
+        except Exception as e:
+            self.logger.debug(f"Error parsing video creation date for {file_path}: {e}")
+            return None
+
+    def _parse_iso8601_to_est(self, timestamp_str: str) -> Optional[datetime]:
+        """Parse ISO 8601 timestamp and convert to EST/EDT timezone."""
+        try:
+            # Handle various ISO 8601 formats
+            # Examples: "2025-05-06T19:41:34-0400", "2025-05-06T23:41:35.000000Z"
+
+            # Use regex to parse the timestamp components
+            iso_pattern = r'(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:?\d{2})?'
+            match = re.match(iso_pattern, timestamp_str)
+
+            if not match:
+                self.logger.debug(f"Invalid ISO 8601 format: {timestamp_str}")
+                return None
+
+            date_part = match.group(1)
+            time_part = match.group(2)
+            timezone_part = match.group(4)
+
+            # Create base datetime string
+            datetime_str = f"{date_part} {time_part}"
+            base_dt = datetime.strptime(datetime_str, "%Y-%m-%d %H:%M:%S")
+
+            # Handle timezone
+            if timezone_part:
+                if timezone_part == 'Z':
+                    # UTC timezone
+                    aware_dt = base_dt.replace(tzinfo=timezone.utc)
+                else:
+                    # Parse offset like "-0400" or "+05:00"
+                    tz_str = timezone_part
+                    if ':' not in tz_str:
+                        # Convert "-0400" to "-04:00"
+                        tz_str = f"{tz_str[:-2]}:{tz_str[-2:]}"
+
+                    # Parse the offset
+                    sign = 1 if tz_str[0] == '+' else -1
+                    hours = int(tz_str[1:3])
+                    minutes = int(tz_str[4:6])
+                    offset_minutes = sign * (hours * 60 + minutes)
+
+                    tz_offset = timezone(timedelta(minutes=offset_minutes))
+                    aware_dt = base_dt.replace(tzinfo=tz_offset)
+            else:
+                # No timezone info, assume UTC
+                aware_dt = base_dt.replace(tzinfo=timezone.utc)
+
+            # Convert to EST/EDT (America/New_York)
+            est_tz = zoneinfo.ZoneInfo("America/New_York")
+            est_dt = aware_dt.astimezone(est_tz)
+
+            # Return as naive datetime in EST/EDT for consistency
+            return est_dt.replace(tzinfo=None)
+
+        except Exception as e:
+            self.logger.debug(f"Error parsing timestamp '{timestamp_str}': {e}")
+            return None
+
     def get_creation_date(self, file_path: Path) -> datetime:
         """Extract creation date from file metadata."""
-        try:
-            if file_path.suffix.lower() in MOVIE_EXTENSIONS:
-                raise TypeError("Movie file - use filesystem date")
+        # Handle video files with ffprobe
+        if file_path.suffix.lower() in MOVIE_EXTENSIONS:
+            video_date = self._get_video_creation_date(file_path)
+            if video_date:
+                return video_date
+            else:
+                # Fallback to filesystem date for videos
+                self.logger.debug(f"No video metadata found, using filesystem date for {file_path}")
+                return datetime.fromtimestamp(file_path.stat().st_mtime)
 
-            # Use macOS sips command for photo metadata
+        # Handle photo files with sips command
+        try:
             result = subprocess.run(
                 ["sips", "-g", "creation", str(file_path)],
                 capture_output=True, text=True, check=True
@@ -134,8 +247,9 @@ class PhotoSorter:
 
             raise ValueError("No creation date found in sips output")
 
-        except (subprocess.CalledProcessError, ValueError, TypeError):
-            # Fallback to file modification time
+        except (subprocess.CalledProcessError, ValueError):
+            # Fallback to file modification time for photos
+            self.logger.debug(f"No photo metadata found, using filesystem date for {file_path}")
             return datetime.fromtimestamp(file_path.stat().st_mtime)
 
     def find_source_files(self) -> Tuple[List[Path], List[Path]]:
