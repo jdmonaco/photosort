@@ -17,6 +17,7 @@ photosort/
 ├── cli.py              # Command-line interface and main entry point
 ├── config.py           # Configuration management (Config class)
 ├── constants.py        # File extension constants and settings
+├── conversion.py       # Video format conversion using ffmpeg (VideoConverter class)
 ├── core.py             # Core photo sorting logic (PhotoSorter class)
 ├── history.py          # Import history management (HistoryManager class)
 ├── permissions.py      # File permissions and group ownership utilities
@@ -27,6 +28,7 @@ photosort/
 - **`photosort.cli`**: CLI argument parsing and main entry point
 - **`photosort.core.PhotoSorter`**: Handles the multi-phase processing workflow
 - **`photosort.config.Config`**: Manages YAML configuration and remembers user preferences
+- **`photosort.conversion.VideoConverter`**: Automatic video format conversion to H.265/MP4
 - **`photosort.history.HistoryManager`**: Manages import history, logging, and auxiliary file placement
 - **`photosort.constants`**: File extension definitions and configuration constants
 - **`photosort.permissions`**: File mode and group ownership utilities
@@ -45,7 +47,9 @@ photosort/
 - **Simplified organization**: No movies subfolder - all media in same date folders
 - **Metadata separation**: Handles .aae and other metadata files separately
 - **Advanced deduplication**: Size comparison + optional content hashing for smaller files
-- **macOS optimized**: Uses `sips` command for accurate photo metadata extraction
+- **Automatic video conversion**: Legacy formats converted to H.265/MP4 with original archival
+- **Timezone-aware video dates**: EST/EDT conversion with Live Photo compatibility
+- **macOS optimized**: Uses `sips` for photos, `ffprobe` for accurate video metadata extraction
 
 ## Package Management
 
@@ -91,6 +95,7 @@ Output structure: `YYYY/MM/YYYY-MM-DD_HH-MM-SS.ext`
 └── history/                      # Per-import history folders
     └── YYYY-MM-DD+DEST-NAME/     # Timestamped import sessions
         ├── import.log            # Detailed logs for this import
+        ├── LegacyVideos/         # Original videos before H.265/MP4 conversion
         ├── Metadata/             # .aae, .xml, .json metadata files
         ├── UnknownFiles/         # Unrecognized file types
         └── Unsorted/             # Problem files that couldn't be processed
@@ -103,7 +108,9 @@ Output structure: `YYYY/MM/YYYY-MM-DD_HH-MM-SS.ext`
 ### Core Processing (`photosort.core`)
 - `PhotoSorter.process_files()`: Main media file processing with progress tracking
 - `PhotoSorter.process_metadata_files()`: Handles metadata files separately
-- `PhotoSorter.get_creation_date()`: Extracts creation date from file metadata
+- `PhotoSorter.get_creation_date()`: Timezone-aware date extraction for photos and videos
+- `PhotoSorter._get_video_creation_date()`: JSON-based ffprobe parsing with EST/EDT conversion
+- `PhotoSorter._parse_iso8601_to_est()`: ISO 8601 timestamp parsing with timezone conversion
 - `PhotoSorter.is_duplicate()`: Advanced duplicate detection with size/hash comparison
 - `PhotoSorter.get_destination_path()`: Generates timestamped destination paths
 
@@ -114,8 +121,9 @@ Output structure: `YYYY/MM/YYYY-MM-DD_HH-MM-SS.ext`
 ### History Management (`photosort.history`)
 - `HistoryManager.__init__()`: Creates timestamped import folders
 - `HistoryManager.setup_import_logger()`: Configures per-import logging
-- `HistoryManager.log_import_summary()`: Records import summary to global log
+- `HistoryManager.log_import_summary()`: Records import summary to global log with conversion metrics
 - `HistoryManager.get_metadata_dir()`: Path for metadata files in history
+- `HistoryManager.get_legacy_videos_dir()`: Path for original videos before conversion
 - `HistoryManager.get_unsorted_dir()`: Path for problematic files
 
 ### File Permissions (`photosort.permissions`)
@@ -124,12 +132,20 @@ Output structure: `YYYY/MM/YYYY-MM-DD_HH-MM-SS.ext`
 - `set_directory_groups()`: Applies group ownership to destination directories
 - `get_system_default_mode()`: Gets system default file mode from umask
 
+### Video Conversion (`photosort.conversion`)
+- `VideoConverter.needs_conversion()`: Detects non-modern codec videos requiring conversion
+- `VideoConverter.convert_video()`: H.265/MP4 conversion with libx265, CRF 28, AAC audio
+- `VideoConverter.get_video_codec()`: Extract video codec using ffprobe for format detection
+- `VideoConverter.get_conversion_info()`: Provides conversion details and size reduction metrics
+
 ### Configuration (`photosort.config`)
 - `Config.get_last_source()`: Retrieves saved source directory
 - `Config.get_last_dest()`: Retrieves saved destination directory
 - `Config.update_paths()`: Saves new source/destination paths
 - `Config.update_file_mode()`: Saves file permission preferences
 - `Config.update_group()`: Saves group ownership preferences
+- `Config.get_convert_videos()`: Retrieves video conversion setting
+- `Config.update_convert_videos()`: Saves video conversion preference
 
 ### Utilities (`photosort.utils`)
 - `cleanup_source_directory()`: Post-processing source cleanup
@@ -175,6 +191,9 @@ The `Config` class manages `~/.photosort/config.yml`:
 - `--mode, -m`: File permissions in octal (e.g., 644, 600) - saves as new default
 - `--group, -g`: Group ownership (e.g., staff, wheel) - saves as new default
 
+### Video Conversion
+- `--no-convert-videos`: Disable automatic conversion of legacy video formats to H.265/MP4
+
 ### Other Options
 - `--verbose, -v`: Enable debug logging to import.log
 - `--help`: Shows dynamic help with current configured defaults
@@ -184,6 +203,7 @@ The `Config` class manages `~/.photosort/config.yml`:
 The package exports these key classes and functions:
 - `photosort.main`: Main CLI entry point function
 - `photosort.Config`: Configuration management class
+- `photosort.VideoConverter`: Video format conversion class
 - `photosort.PhotoSorter`: Core photo sorting class
 - `photosort.HistoryManager`: Import history management class
 

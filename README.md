@@ -11,7 +11,9 @@ A modern Python tool for organizing photos and videos into a clean year/month fo
 - **Clean Destinations**: Only organized media in destination folders - auxiliary files moved to history
 - **Auto Source Cleanup**: Automatically cleans and removes empty directories from source after moving
 - **Duplicate Detection**: Intelligent deduplication based on file size and content hashing
-- **macOS Optimized**: Uses native `sips` command for accurate photo metadata extraction
+- **Automatic Video Conversion**: Converts legacy formats to H.265/MP4 with original preservation
+- **Timezone-Aware Dates**: EST/EDT conversion for accurate video timestamps and Live Photo compatibility
+- **macOS Optimized**: Uses native `sips` for photos, `ffprobe` for accurate video metadata extraction
 
 ### Advanced Features
 - **File Permissions**: Set custom file permissions (e.g., 644, 600) with persistent defaults
@@ -95,6 +97,9 @@ photosort --help
 - `--mode`, `-m`: File permissions in octal format (e.g., 644, 664, 400)
 - `--group`, `-g`: Group ownership (e.g., staff, users, wheel)
 
+#### Video Processing
+- `--no-convert-videos`: Disable automatic conversion of legacy video formats to H.265/MP4
+
 ## File Organization
 
 ### Clean Destination Structure
@@ -124,6 +129,9 @@ All auxiliary files are preserved in a searchable history:
 └── history/                           # Per-import session history
     ├── 2024-06-26+Pictures-Organized/
     │   ├── import.log                 # Detailed logs for this import
+    │   ├── LegacyVideos/              # Original videos before H.265/MP4 conversion
+    │   │   ├── movie_001.avi
+    │   │   └── video_old.3gp
     │   ├── Metadata/                  # Apple .AAE files and other metadata
     │   │   ├── IMG_1234.aae
     │   │   └── config.xml
@@ -154,8 +162,9 @@ All auxiliary files are preserved in a searchable history:
 
 ## Requirements
 
-- **macOS**: Uses `sips` command for photo metadata
+- **macOS**: Uses `sips` command for photo metadata and `ffprobe` for video metadata
 - **Python 3.8+**
+- **ffmpeg**: Required for video conversion and metadata extraction
 - Dependencies: `rich`, `pyyaml`
 
 ## Development
