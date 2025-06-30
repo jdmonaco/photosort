@@ -47,7 +47,9 @@ photosort/
 - **Simplified organization**: No movies subfolder - all media in same date folders
 - **Metadata separation**: Handles .aae and other metadata files separately
 - **Advanced deduplication**: Size comparison + optional content hashing for smaller files
+- **Live Photo detection**: ContentIdentifier matching via exiftool with basename fallback
 - **Automatic video conversion**: Legacy formats converted to H.265/MP4 with original archival
+- **Clean COPY mode**: Video conversion uses temp directory to avoid source pollution
 - **Timezone-aware video dates**: EST/EDT conversion with Live Photo compatibility
 - **macOS optimized**: Uses `sips` for photos, `ffprobe` for accurate video metadata extraction
 
@@ -107,6 +109,7 @@ Output structure: `YYYY/MM/YYYY-MM-DD_HH-MM-SS.ext`
 
 ### Core Processing (`photosort.core`)
 - `PhotoSorter.process_files()`: Main media file processing with progress tracking
+- `PhotoSorter.process_livephoto_pairs()`: Live Photo pair processing with shared basenames
 - `PhotoSorter.process_metadata_files()`: Handles metadata files separately
 - `PhotoSorter.get_creation_date()`: Timezone-aware date extraction for photos and videos
 - `PhotoSorter._get_video_creation_date()`: JSON-based ffprobe parsing with EST/EDT conversion
@@ -114,9 +117,13 @@ Output structure: `YYYY/MM/YYYY-MM-DD_HH-MM-SS.ext`
 - `PhotoSorter.is_duplicate()`: Advanced duplicate detection with size/hash comparison
 - `PhotoSorter.get_destination_path()`: Generates timestamped destination paths
 
-### File Discovery (`photosort.core`)
-- `PhotoSorter.find_source_files()`: Returns tuple of (media_files, metadata_files)
-- Separates processing streams for different file types
+### File Discovery and Live Photo Detection (`photosort.core`)
+- `PhotoSorter.find_source_files()`: Returns 3-tuple of (media_files, metadata_files, livephoto_pairs)
+- `PhotoSorter._livephoto_sorting()`: Detects Live Photo pairs by ContentIdentifier matching
+- `PhotoSorter._livephoto_basename_fallback()`: Fallback Live Photo detection using filename basenames
+- `PhotoSorter._parse_livephoto_date()`: Extracts creation date with millisecond precision
+- `PhotoSorter._generate_livephoto_basename()`: Creates shared basenames for Live Photo pairs
+- Separates processing streams for individual files, Live Photo pairs, and metadata
 
 ### History Management (`photosort.history`)
 - `HistoryManager.__init__()`: Creates timestamped import folders
@@ -137,6 +144,8 @@ Output structure: `YYYY/MM/YYYY-MM-DD_HH-MM-SS.ext`
 - `VideoConverter.convert_video()`: H.265/MP4 conversion with libx265, CRF 28, AAC audio
 - `VideoConverter.get_video_codec()`: Extract video codec using ffprobe for format detection
 - `VideoConverter.get_conversion_info()`: Provides conversion details and size reduction metrics
+- **COPY mode behavior**: Uses temp directory for conversion to avoid polluting source
+- **MOVE mode behavior**: Converts in source directory for efficiency
 
 ### Configuration (`photosort.config`)
 - `Config.get_last_source()`: Retrieves saved source directory
@@ -146,6 +155,8 @@ Output structure: `YYYY/MM/YYYY-MM-DD_HH-MM-SS.ext`
 - `Config.update_group()`: Saves group ownership preferences
 - `Config.get_convert_videos()`: Retrieves video conversion setting
 - `Config.update_convert_videos()`: Saves video conversion preference
+- `Config.get_timezone()`: Retrieves saved timezone setting
+- `Config.update_timezone()`: Saves timezone preference
 
 ### Utilities (`photosort.utils`)
 - `cleanup_source_directory()`: Post-processing source cleanup
@@ -153,8 +164,9 @@ Output structure: `YYYY/MM/YYYY-MM-DD_HH-MM-SS.ext`
 - Moves unknown files to history directory
 
 ### Constants (`photosort.constants`)
-- `PHOTO_EXTENSIONS`: Supported photo file extensions
+- `PHOTO_EXTENSIONS`: Supported photo file extensions (includes GIF, TIFF formats)
 - `MOVIE_EXTENSIONS`: Supported video file extensions
+- `MODERN_VIDEO_CODECS`: Video codecs that don't need conversion (h264, h265, av1)
 - `METADATA_EXTENSIONS`: Metadata file extensions
 - `NUISANCE_EXTENSIONS`: System files to remove during cleanup
 
@@ -168,6 +180,31 @@ The `Config` class manages `~/.photosort/config.yml`:
 - **Graceful fallback**: Handles missing/corrupted config files without errors
 - **YAML format**: Human-readable configuration file format
 
+## Live Photo Processing (`photosort.core`)
+
+The Live Photo system detects and processes Apple Live Photo pairs (image + video) to ensure they receive identical basenames and timestamps for proper photo management software support.
+
+### Detection Methods
+1. **Primary: ContentIdentifier Matching**
+   - Uses `exiftool` to extract Apple ContentIdentifier metadata from image and video files
+   - Groups files with matching ContentIdentifiers as Live Photo pairs
+   - Extracts SubSecCreateDate for millisecond precision in shared basenames
+
+2. **Fallback: Basename Matching**
+   - When exiftool unavailable, matches files by filename stem (e.g., IMG_1234.heic + IMG_1234.mov)
+   - Uses image file creation date for shared timestamp
+
+### Processing Workflow
+1. **Detection Phase**: `_livephoto_sorting()` identifies pairs and returns remaining individual files
+2. **Processing Order**: Live Photo pairs processed first to avoid filename collisions
+3. **Shared Basenames**: Both files get identical `YYYYMMDD_HHMMSS_###` basenames with millisecond counters
+4. **Individual Processing**: Each file in pair processed with predetermined basename
+
+### Video Conversion in Live Photos
+- Live Photo videos are typically modern .mov files that don't need conversion
+- If conversion needed, follows same COPY/MOVE mode behavior as individual files
+- Preserves Live Photo relationship through shared basename
+
 ## Error Handling
 
 - **Dual logging system**: Console shows warnings/errors, import.log captures everything
@@ -178,6 +215,27 @@ The `Config` class manages `~/.photosort/config.yml`:
 - **Automatic source cleanup**: Removes empty directories and nuisance files
 - **Graceful degradation**: Filesystem dates used if EXIF extraction fails
 - **Permission errors**: File/group permission failures logged but don't stop processing
+
+## Video Conversion Modes (`photosort.conversion`)
+
+Video conversion behavior adapts based on the file operation mode to maintain source directory integrity.
+
+### COPY Mode (`--copy`)
+- **Temp Directory Conversion**: Creates converted files in system temp directory
+- **Source Preservation**: Source directory remains completely untouched
+- **Clean Operation**: Only converted video appears in destination, temp files cleaned up
+- **Original Archival**: Original video copied to history `LegacyVideos/` directory
+
+### MOVE Mode (default)
+- **In-Source Conversion**: Creates converted files in source directory for efficiency
+- **Source Cleanup**: Converted files moved to destination, originals to legacy archive
+- **Existing Behavior**: Maintains backward compatibility with previous versions
+
+### Conversion Process
+1. **Codec Detection**: Uses ffprobe to identify non-modern video codecs
+2. **H.265 Encoding**: Converts with libx265, CRF 28 quality, AAC audio
+3. **Metadata Preservation**: Maintains creation dates and global metadata
+4. **Archival**: Original videos preserved in timestamped history directories
 
 ## CLI Arguments
 
@@ -193,6 +251,9 @@ The `Config` class manages `~/.photosort/config.yml`:
 
 ### Video Conversion
 - `--no-convert-videos`: Disable automatic conversion of legacy video formats to H.265/MP4
+
+### Timezone Configuration
+- `--timezone, --tz`: Default timezone for creation time metadata (saves as new default)
 
 ### Other Options
 - `--verbose, -v`: Enable debug logging to import.log
@@ -220,7 +281,8 @@ sorter = PhotoSorter(
     dest=Path("~/Pictures/Organized"),
     dry_run=True
 )
-media_files, metadata_files = sorter.find_source_files()
+media_files, metadata_files, livephoto_pairs = sorter.find_source_files()
+sorter.process_livephoto_pairs(livephoto_pairs)
 sorter.process_files(media_files)
 ```
 

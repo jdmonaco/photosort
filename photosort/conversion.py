@@ -20,20 +20,15 @@ class VideoConverter:
     def __init__(self, dry_run: bool = False):
         self.dry_run = dry_run
         self.logger = logging.getLogger("photosort.conversion")
+        self._ffmpeg_available = self._check_ffmpeg_available()
+        if not self._ffmpeg_available:
+            self.logger.warning("ffmpeg unavailable: skipping legacy video conversion")
 
     def _check_ffmpeg_available(self) -> bool:
         """Check if ffmpeg and ffprobe are available."""
         try:
-            subprocess.run(
-                ["ffmpeg", "-version"],
-                capture_output=True,
-                check=True
-            )
-            subprocess.run(
-                ["ffprobe", "-version"],
-                capture_output=True,
-                check=True
-            )
+            subprocess.run(["ffmpeg", "-version"], capture_output=True, check=True)
+            subprocess.run(["ffprobe", "-version"], capture_output=True, check=True)
             return True
         except (subprocess.CalledProcessError, FileNotFoundError):
             return False
@@ -41,10 +36,17 @@ class VideoConverter:
     def get_video_codec(self, video_path: Path) -> Optional[str]:
         """Extract video codec information using ffprobe."""
         try:
-            result = subprocess.run([
-                "ffprobe", "-v", "quiet", "-print_format", "json",
-                "-show_streams", "-select_streams", "v:0", str(video_path)
-            ], capture_output=True, text=True, check=True)
+            result = subprocess.run(
+                [
+                    "ffprobe",
+                    "-v", "quiet",
+                    "-print_format", "json",
+                    "-show_streams",
+                    "-select_streams", "v:0",
+                    str(video_path),
+                ],
+                capture_output=True, text=True, check=True,
+            )
 
             data = json.loads(result.stdout)
             if data.get("streams"):
@@ -57,8 +59,7 @@ class VideoConverter:
 
     def needs_conversion(self, video_path: Path) -> bool:
         """Check if video needs conversion to modern format."""
-        if not self._check_ffmpeg_available():
-            self.logger.warning("ffmpeg not available - skipping video conversion")
+        if not self._ffmpeg_available:
             return False
 
         codec = self.get_video_codec(video_path)
@@ -68,15 +69,14 @@ class VideoConverter:
         return codec not in MODERN_VIDEO_CODECS
 
     def convert_video(self, input_path: Path, output_path: Path,
-                     progress: Optional[Progress] = None,
-                     task: Optional[TaskID] = None) -> bool:
+                      progress: Optional[Progress] = None,
+                      task: Optional[TaskID] = None) -> bool:
         """Convert video to H.265/MP4 format."""
         if self.dry_run:
             self.logger.info(f"DRY RUN: Would convert {input_path} -> {output_path}")
             return True
 
-        if not self._check_ffmpeg_available():
-            self.logger.error("ffmpeg not available for video conversion")
+        if not self._ffmpeg_available:
             return False
 
         # Create output directory
@@ -90,28 +90,21 @@ class VideoConverter:
             # Build ffmpeg command for H.265/MP4 conversion
             cmd = [
                 "ffmpeg", "-i", str(input_path),
-                "-c:v", "libx265",           # H.265 video codec
-                "-preset", "medium",         # Encoding speed/quality balance
-                "-crf", "28",                # Quality setting (lower = better quality)
-                "-c:a", "aac",               # AAC audio codec
-                "-movflags", "+faststart",   # Optimize for streaming
-                "-map_metadata 0:g",         # Preserve global metadata
-                "-y",                        # Overwrite output
-                str(temp_path)
+                "-c:v", "libx265",    # H.265 video codec
+                "-preset", "medium",  # Encoding speed/quality balance
+                "-crf", "28",         # Quality setting (lower = better quality)
+                "-c:a", "aac",        # AAC audio codec
+                "-movflags",
+                "+faststart",         # Optimize for streaming
+                "-y",                 # Overwrite output
+                str(temp_path),
             ]
 
             if progress and task:
                 progress.update(task, description=f"Converting: {input_path.name}")
 
-            self.logger.info(f"Converting {input_path} to H.265/MP4...")
-
             # Run conversion
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                check=True
-            )
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
 
             # Verify the converted file exists and has content
             if not temp_path.exists() or temp_path.stat().st_size == 0:
@@ -120,7 +113,7 @@ class VideoConverter:
             # Move temp file to final location
             temp_path.rename(output_path)
 
-            self.logger.info(f"Successfully converted {input_path} -> {output_path}")
+            self.logger.info(f" * {input_path} -> {output_path}")
             return True
 
         except subprocess.CalledProcessError as e:
@@ -137,7 +130,9 @@ class VideoConverter:
                 except Exception:
                     pass
 
-    def get_conversion_info(self, input_path: Path, output_path: Path) -> Dict[str, str]:
+    def get_conversion_info(
+        self, input_path: Path, output_path: Path
+    ) -> Dict[str, str]:
         """Get information about the conversion that will be performed."""
         original_codec = self.get_video_codec(input_path) or "unknown"
         original_size = input_path.stat().st_size
@@ -146,12 +141,14 @@ class VideoConverter:
             "original_codec": original_codec,
             "target_codec": "h265",
             "original_size": f"{original_size / (1024*1024):.1f} MB",
-            "container": "mp4"
+            "container": "mp4",
         }
 
         if output_path.exists():
             converted_size = output_path.stat().st_size
             info["converted_size"] = f"{converted_size / (1024*1024):.1f} MB"
-            info["size_reduction"] = f"{((original_size - converted_size) / original_size * 100):.1f}%"
+            info["size_reduction"] = (
+                f"{((original_size - converted_size) / original_size * 100):.1f}%"
+            )
 
         return info

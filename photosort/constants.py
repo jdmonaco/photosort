@@ -6,12 +6,12 @@ File extension constants and settings for photo organization.
 JPG_EXTENSIONS = (".jpg", ".jpeg", ".jpe")
 RAW_EXTENSIONS = (
     ".3fr", ".3pr", ".arw", ".ce1", ".ce2", ".cib", ".cmt", ".cr2", ".craw",
-    ".crw", ".dc2", ".dcr", ".dng", ".erf", ".exf", ".fff", ".fpx", ".gray",
-    ".grey", ".gry", ".heic", ".iiq", ".kc2", ".kdc", ".mdc", ".mef", ".mfw",
-    ".mos", ".mrw", ".ndd", ".nef", ".nop", ".nrw", ".nwb", ".orf", ".pcd",
-    ".pef", ".png", ".ptx", ".ra2", ".raf", ".raw", ".rw2", ".rwl", ".rwz",
-    ".sd0", ".sd1", ".sr2", ".srf", ".srw", ".st4", ".st5", ".st6", ".st7",
-    ".st8", ".stx", ".x3f", ".ycbcra",
+    ".crw", ".dc2", ".dcr", ".dng", ".erf", ".exf", ".fff", ".fpx", ".gif",
+    ".gray", ".grey", ".gry", ".heic", ".iiq", ".kc2", ".kdc", ".mdc", ".mef",
+    ".mfw", ".mos", ".mrw", ".ndd", ".nef", ".nop", ".nrw", ".nwb", ".orf",
+    ".pcd", ".pef", ".png", ".ptx", ".ra2", ".raf", ".raw", ".rw2", ".rwl",
+    ".rwz", ".sd0", ".sd1", ".sr2", ".srf", ".srw", ".st4", ".st5", ".st6",
+    ".st7", ".st8", ".stx", ".tif", ".tiff", ".x3f", ".ycbcra"
 )
 PHOTO_EXTENSIONS = JPG_EXTENSIONS + RAW_EXTENSIONS
 MOVIE_EXTENSIONS = (

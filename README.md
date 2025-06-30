@@ -6,12 +6,14 @@ A modern Python tool for organizing photos and videos into a clean year/month fo
 
 ### Core Organization
 - **Smart Organization**: Automatically sorts photos and videos by creation date into `YYYY/MM/` folders
-- **Live Photo Friendly**: Photos and videos in same folders for better photo management software support
+- **Live Photo Detection**: Detects Apple Live Photo pairs using ContentIdentifier matching with basename fallback
+- **Live Photo Processing**: Ensures paired files get identical basenames with millisecond precision
 - **Multiple Media Types**: Supports photos (JPG, RAW formats), videos, and handles metadata files separately
 - **Clean Destinations**: Only organized media in destination folders - auxiliary files moved to history
 - **Auto Source Cleanup**: Automatically cleans and removes empty directories from source after moving
 - **Duplicate Detection**: Intelligent deduplication based on file size and content hashing
-- **Automatic Video Conversion**: Converts legacy formats to H.265/MP4 with original preservation
+- **Smart Video Conversion**: Converts legacy formats to H.265/MP4 with clean COPY mode operation
+- **Source Preservation**: COPY mode uses temp directory for conversion, leaves source untouched
 - **Timezone-Aware Dates**: EST/EDT conversion for accurate video timestamps and Live Photo compatibility
 - **macOS Optimized**: Uses native `sips` for photos, `ffprobe` for accurate video metadata extraction
 
@@ -76,6 +78,22 @@ photosort --group staff ~/source ~/dest
 photosort --mode 600 --group wheel ~/source ~/dest
 ```
 
+### Video Conversion and Live Photos
+
+```bash
+# Copy mode - source directory stays clean during video conversion
+photosort --copy ~/source ~/dest
+
+# Move mode with video conversion disabled
+photosort --no-convert-videos ~/source ~/dest
+
+# Set timezone for video metadata extraction
+photosort --timezone "America/Los_Angeles" ~/source ~/dest
+
+# Process directory with Live Photos (automatic detection)
+photosort ~/iPhone-Photos ~/Pictures/Organized
+```
+
 ### Configuration
 
 Photosort remembers your preferences in `~/.photosort/config.yml`. The help message shows your current configured defaults:
@@ -100,6 +118,9 @@ photosort --help
 #### Video Processing
 - `--no-convert-videos`: Disable automatic conversion of legacy video formats to H.265/MP4
 
+#### Timezone Configuration
+- `--timezone`, `--tz`: Set default timezone for video metadata (e.g., "America/New_York")
+
 ## File Organization
 
 ### Clean Destination Structure
@@ -111,12 +132,14 @@ Destination/
 │   ├── 01/
 │   │   ├── 20240115_143022.jpg
 │   │   ├── 20240115_164510.mp4      # Videos sorted alongside photos
-│   │   ├── 20240120_123045.jpg
-│   │   ├── 20240120_123045_001.jpg  # Numerical suffix for photo bursts
+│   │   ├── 20240120_123045_000.jpg
+│   │   ├── 20240120_123045_001.jpg  # Sequential counter for multiple files same time
 │   │   └── 20240120_123045_002.jpg
 │   └── 02/
-│       ├── 20240203_091533.jpg      # Photo/video pairs share base filename
-│       └── 20240203_091533.mov      # to support Live Photo processing
+│       ├── 20240203_091533_045.jpg  # Live Photo pairs share base filename
+│       ├── 20240203_091533_045.mov  # with millisecond precision counters
+│       ├── 20240203_091834_000.jpg  # Regular photos with standard counters
+│       └── 20240203_091834_000.mp4  # Individual video files
 ```
 
 ### Import History Structure
@@ -147,7 +170,7 @@ All auxiliary files are preserved in a searchable history:
 - JPG, JPEG, JPE
 - RAW formats: CR2, NEF, ARW, DNG, RAF, ORF, PEF, RW2, and many more
 - HEIC (iPhone photos)
-- PNG
+- PNG, GIF, TIFF
 
 ### Videos
 - MP4, MOV, AVI, MKV, M4V
@@ -165,6 +188,7 @@ All auxiliary files are preserved in a searchable history:
 - **macOS**: Uses `sips` command for photo metadata and `ffprobe` for video metadata
 - **Python 3.8+**
 - **ffmpeg**: Required for video conversion and metadata extraction
+- **exiftool** (optional): Enhanced Live Photo detection via ContentIdentifier matching
 - Dependencies: `rich`, `pyyaml`
 
 ## Development

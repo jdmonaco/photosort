@@ -21,6 +21,7 @@ def create_parser(config: Config) -> argparse.ArgumentParser:
     last_dest = config.get_last_dest()
     file_mode = config.get_file_mode()
     group = config.get_group()
+    timezone = config.get_timezone()
     convert_videos = config.get_convert_videos()
 
     # Create help text that shows current defaults
@@ -28,6 +29,8 @@ def create_parser(config: Config) -> argparse.ArgumentParser:
     dest_help = "Destination directory for organized photos"
     mode_help = "File permissions mode in octal format (e.g., 644, 664, 400)"
     group_help = "Group ownership for organized files (e.g., staff, users, wheel)"
+    timezone_help = "Default timezone for creation time metadata if missing"
+    video_help = "Disable automatic conversion of legacy video formats to H.265/MP4"
 
     if last_source:
         source_help += f" (default: {last_source})"
@@ -41,9 +44,18 @@ def create_parser(config: Config) -> argparse.ArgumentParser:
         group_help += f" (default: {group})"
     else:
         group_help += " (default: user primary group)"
+    if timezone:
+        timezone_help += f" (default: {timezone})"
+    else:
+        timezone_help += "default: America/New York"
+    if convert_videos:
+        video_help += " (conversion enabled)"
+    else:
+        video_help += " (conversion disabled)"
+
 
     parser = argparse.ArgumentParser(
-        description="Organize photos and videos into year/month folder structure",
+        description="Smart organizer for importing photos and videos",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -89,12 +101,10 @@ Examples:
         "--group", "-g", type=str, metavar="GROUP",
         help=group_help
     )
-    video_help = "Disable automatic conversion of legacy video formats to H.265/MP4"
-    if convert_videos:
-        video_help += " (conversion enabled)"
-    else:
-        video_help += " (conversion disabled)"
-
+    parser.add_argument(
+        "--timezone", "--tz", type=str, metavar="TIMEZONE",
+        help=timezone_help
+    )
     parser.add_argument(
         "--no-convert-videos", action="store_true",
         help=video_help
@@ -171,6 +181,11 @@ def main() -> int:
             # If saved group is invalid, use system default
             group_gid = None
 
+    # Handle timezone setting
+    timezone = args.timezone if hasattr(args, 'timezone') and args.timezone else config.get_timezone() or "America/New_York"
+    if hasattr(args, 'timezone') and args.timezone:
+        config.update_timezone(args.timezone)
+
     # Handle video conversion setting
     convert_videos = not args.no_convert_videos  # Invert since flag disables conversion
     if args.no_convert_videos and config.get_convert_videos():
@@ -192,6 +207,7 @@ def main() -> int:
         move_files=not args.copy,
         file_mode=file_mode,
         group_gid=group_gid,
+        timezone=timezone,
         convert_videos=convert_videos
     )
 
@@ -200,29 +216,34 @@ def main() -> int:
     if args.dry_run:
         console.print("[yellow]DRY RUN - No files will be moved[/yellow]")
 
-    console.print(f"Source: [blue]{source}[/blue]")
-    console.print(f"Destination: [blue]{dest}[/blue]")
+    console.print(f" - Source:      [blue]{source}[/blue]")
+    console.print(f" - Destination: [blue]{dest}[/blue]")
 
     # Find and process files
-    media_files, metadata_files = sorter.find_source_files()
+    media_files, metadata_files, livephoto_pairs = sorter.find_source_files()
 
-    if not media_files and not metadata_files:
-        console.print("[yellow]No media or metadata files found in source directory[/yellow]")
+    total_files = len(media_files) + (len(livephoto_pairs) * 2)
+    if total_files == 0:
+        console.print("[yellow]No media files found in source directory[/yellow]")
         return 0
 
-    total_files = len(media_files) + len(metadata_files)
-    console.print(f"Found {len(media_files)} media files and {len(metadata_files)} metadata files to process")
+    console.print(f"Found {len(media_files)} individual files and {len(livephoto_pairs)} Live Photo pairs to process")
 
     try:
-        # Process metadata files first
+        # Process Live Photo pairs first (to avoid filename collisions)
+        if livephoto_pairs:
+            console.print("Processing Live Photo pairs...")
+            sorter.process_livephoto_pairs(livephoto_pairs)
+
+        # Process remaining individual media files
+        if media_files:
+            console.print("Processing individual media files...")
+            sorter.process_files(media_files)
+
+        # Process metadata files after media files
         if metadata_files:
             console.print("Processing metadata files...")
             sorter.process_metadata_files(metadata_files)
-
-        # Process media files
-        if media_files:
-            console.print("Processing media files...")
-            sorter.process_files(media_files)
 
         # If moving files (and not dry-run), clean up the source directory
         if not args.copy and not args.dry_run:

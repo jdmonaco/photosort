@@ -65,6 +65,10 @@ class Config:
         """Get the video conversion setting (default: True)."""
         return self.data.get('convert_videos', True)
 
+    def get_timezone(self) -> Optional[str]:
+        """Get the saved timezone setting."""
+        return self.data.get('timezone')
+
     def update_paths(self, source: str, dest: str) -> None:
         """Update and save the last used paths."""
         self.data['last_source'] = source
@@ -84,4 +88,9 @@ class Config:
     def update_convert_videos(self, convert_videos: bool) -> None:
         """Update and save the video conversion setting."""
         self.data['convert_videos'] = convert_videos
+        self.save_config()
+
+    def update_timezone(self, timezone: str) -> None:
+        """Update and save the timezone setting."""
+        self.data['timezone'] = timezone
         self.save_config()
