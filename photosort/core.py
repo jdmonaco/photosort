@@ -75,7 +75,6 @@ class PhotoSorter:
         # Determine availability of metadata extraction tools
         self._exiftool_available = self._is_tool_available("exiftool", "-ver")
         self._sips_available = self._is_tool_available("sips", "-v")
-        self._exiv2_available = self._is_tool_available("exiv2", "-V")
         self._ffprobe_available = self._is_tool_available("ffprobe", "-version")
 
         # Log the start of import session
@@ -159,12 +158,12 @@ class PhotoSorter:
                     self.logger.debug(f"Using standard creation_time: {creation_time} from {file_path}")
                     return creation_time
 
-            # Priority 2: Apple QuickTime creation date (for Live Photo compatibility)
+            # Priority 2: Apple QuickTime creationdate tag
             apple_date = tags.get("com.apple.quicktime.creationdate")
             if apple_date:
                 creation_time = self._parse_iso8601_datestr(apple_date)
                 if creation_time:
-                    self.logger.debug(f"Using Apple QuickTime creation date: {creation_time} from {file_path}")
+                    self.logger.debug(f"Using QuickTime creation date: {creation_time} from {file_path}")
                     return creation_time
 
             self.logger.debug(f"No usable creation date tags found in video metadata for {file_path}")
@@ -182,11 +181,9 @@ class PhotoSorter:
 
     def _parse_iso8601_datestr(self, timestamp_str: str) -> Optional[datetime]:
         """Parse ISO 8601 timestamp and convert to default timezone."""
+        # Handle various ISO 8601 formats
+        # Examples: "2025-05-06T19:41:34-0400", "2025-05-06T23:41:35.000000Z"
         try:
-            # Handle various ISO 8601 formats
-            # Examples: "2025-05-06T19:41:34-0400", "2025-05-06T23:41:35.000000Z"
-
-            # Use regex to parse the timestamp components
             iso_pattern = r'(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:?\d{2})?'
             match = re.match(iso_pattern, timestamp_str)
 
@@ -244,17 +241,14 @@ class PhotoSorter:
             video_date = self._get_video_creation_date(file_path)
             if video_date:
                 return video_date
-            else:
-                # Fallback to filesystem date for videos
-                self.logger.debug(f"No video metadata found, using filesystem date for {file_path}")
-                return datetime.fromtimestamp(file_path.stat().st_mtime)
 
         # Handle photo files with sips command
-        try:
-            result = subprocess.run(
-                ["sips", "-g", "creation", str(file_path)],
-                capture_output=True, text=True, check=True
-            )
+        if self._sips_available:
+            try:
+                result = subprocess.run(
+                    ["sips", "-g", "creation", str(file_path)],
+                    capture_output=True, text=True, check=True
+                )
 
             # Parse sips output
             for line in result.stdout.split('\n'):
@@ -262,12 +256,11 @@ class PhotoSorter:
                     date_str = line.split('creation: ')[1].strip()
                     return datetime.strptime(date_str, "%Y:%m:%d %H:%M:%S")
 
-            raise ValueError("No creation date found in sips output")
+            except (subprocess.CalledProcessError, ValueError):
+                pass
 
-        except (subprocess.CalledProcessError, ValueError):
-            # Fallback to file modification time for photos
-            self.logger.debug(f"No photo metadata found, using filesystem date for {file_path}")
-            return datetime.fromtimestamp(file_path.stat().st_mtime)
+        # Fallback to file modification time for photos
+        return datetime.fromtimestamp(file_path.stat().st_mtime)
 
     def _livephoto_sorting(self, media_files: List[Path]) -> Tuple[List[Path], Dict[str, Dict]]:
         """Detect LivePhoto pairs by matching Apple ContentIdentifier keys."""
@@ -404,7 +397,7 @@ class PhotoSorter:
                         return dt, 0
                 except ValueError:
                     continue
-        
+
         return None, 0
 
     def _generate_livephoto_basename(self, creation_date: datetime, milliseconds: int) -> str:
@@ -419,10 +412,10 @@ class PhotoSorter:
         basename_map = {}
         livephoto_pairs = {}
         non_livephoto_files = []
-        
+
         img_ext = ('.heic', '.jpeg', '.jpg')
         mov_ext = ('.mov', '.mp4')
-        
+
         # Group by filename stem (e.g., IMG_1234)
         for file_path in media_files:
             ext = file_path.suffix.lower()
@@ -430,14 +423,14 @@ class PhotoSorter:
                 basename = file_path.stem
                 if basename not in basename_map:
                     basename_map[basename] = {'image': None, 'video': None}
-                
+
                 if ext in img_ext:
                     basename_map[basename]['image'] = file_path
                 elif ext in mov_ext:
                     basename_map[basename]['video'] = file_path
             else:
                 non_livephoto_files.append(file_path)
-        
+
         # Process potential pairs
         for basename, data in basename_map.items():
             if data['image'] and data['video']:
@@ -445,7 +438,7 @@ class PhotoSorter:
                 try:
                     creation_date = self.get_creation_date(data['image'])
                     shared_basename = self._generate_livephoto_basename(creation_date, 0)
-                    
+
                     livephoto_pairs[basename] = {
                         'image_file': data['image'],
                         'video_file': data['video'],
@@ -453,7 +446,7 @@ class PhotoSorter:
                         'creation_date': creation_date,
                         'milliseconds': 0
                     }
-                    
+
                     self.logger.debug(f"Live Photo pair detected (basename): {data['image'].name} + {data['video'].name}")
                 except Exception as e:
                     self.logger.debug(f"Failed to get creation date for {data['image']}: {e}")
@@ -465,7 +458,7 @@ class PhotoSorter:
                     non_livephoto_files.append(data['image'])
                 if data['video']:
                     non_livephoto_files.append(data['video'])
-        
+
         return non_livephoto_files, livephoto_pairs
 
     def find_source_files(self) -> Tuple[List[Path], List[Path], Dict[str, Dict]]:
@@ -484,7 +477,7 @@ class PhotoSorter:
 
         # Live Photo detection and sorting
         media_files, livephoto_pairs = self._livephoto_sorting(media_files)
-        
+
         if livephoto_pairs:
             self.logger.info(f"Detected {len(livephoto_pairs)} Live Photo pairs")
 
@@ -606,7 +599,7 @@ class PhotoSorter:
             self._apply_file_group(dest, self.group_gid)
 
             # Log the successful move
-            self.logger.info(f" * {source} -> {dest}")
+            self.logger.info(f"{source} -> {dest}")
 
             return True
 
@@ -618,7 +611,7 @@ class PhotoSorter:
         """Process Live Photo pairs with shared basenames."""
         if not livephoto_pairs:
             return
-            
+
         self.logger.info(f"Processing {len(livephoto_pairs)} Live Photo pairs")
         with Progress(console=self.console) as progress:
             task = progress.add_task("Processing Live Photos...", total=len(livephoto_pairs) * 2)
@@ -634,7 +627,7 @@ class PhotoSorter:
                     success_image = self._process_livephoto_file(
                         image_file, shared_basename, creation_date, progress, task
                     )
-                    
+
                     # Process video file with shared basename
                     success_video = self._process_livephoto_file(
                         video_file, shared_basename, creation_date, progress, task
@@ -654,13 +647,13 @@ class PhotoSorter:
                         self._move_to_error_dir(pair_data['video_file'])
                     progress.advance(task, 2)
 
-    def _process_livephoto_file(self, file_path: Path, shared_basename: str, 
+    def _process_livephoto_file(self, file_path: Path, shared_basename: str,
                                creation_date: datetime, progress: Progress, task: TaskID) -> bool:
         """Process a single Live Photo file with predetermined basename."""
         try:
             # Get file size before operations
             file_size = file_path.stat().st_size
-            
+
             # Check if this is a video that needs conversion
             is_video = file_path.suffix.lower() in MOVIE_EXTENSIONS
             needs_conversion = (
@@ -709,11 +702,11 @@ class PhotoSorter:
             month = f"{creation_date.month:02d}"
             dest_dir = self.dest / year / month
             ext = processing_file.suffix.lower()
-            
+
             # Normalize JPG extensions
             if ext in JPG_EXTENSIONS:
                 ext = ".jpg"
-                
+
             dest_path = dest_dir / f"{shared_basename}{ext}"
 
             # Check for duplicates
@@ -766,7 +759,7 @@ class PhotoSorter:
                         self.logger.info(f"Archived original Live Photo video: {file_path} -> {legacy_dest}")
                     except Exception as e:
                         self.logger.warning(f"Could not archive original Live Photo video {file_path}: {e}")
-                    
+
                     # Clean up temp converted file in COPY mode
                     if not self.move_files and temp_converted_file and temp_converted_file.exists():
                         try:
@@ -955,7 +948,7 @@ class PhotoSorter:
                         self.logger.info(f"Archived original video: {file_path} -> {legacy_dest}")
                     except Exception as e:
                         self.logger.warning(f"Could not archive original video {file_path}: {e}")
-                    
+
                     # Clean up temp converted file
                     if temp_converted_file and temp_converted_file.exists():
                         try:

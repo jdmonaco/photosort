@@ -104,8 +104,8 @@ class VideoConverter:
                 "-metadata:s:v", "encoder=libx265",
                 "-metadata:s:a", "encoder=aac",
                 "-pix_fmt", "yuv420p",      # QuickTime/macOS compatibility
-                "-crf", "23",               # Quality setting (lower = better quality)
-                "-tag:v hvc1",              # Correct fourCC code for H.265/MP4
+                "-crf", "28",               # Quality setting (lower = better quality)
+                "-tag:v", "hvc1",           # Correct fourCC code for H.265/MP4
                 "-y",                       # Overwrite output
                 str(temp_path),
             ]
@@ -114,7 +114,7 @@ class VideoConverter:
                 progress.update(task, description=f"Converting: {input_path.name}")
 
             # Run conversion
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            result = subprocess.run(cmd, capture_output=True, check=True)
 
             # Verify the converted file exists and has content
             if not temp_path.exists() or temp_path.stat().st_size == 0:
@@ -124,7 +124,7 @@ class VideoConverter:
             temp_path.rename(output_path)
             os.utime(output_path, (original_stat.st_atime, original_stat.st_mtime))
 
-            self.logger.info(f" * {input_path} -> {output_path}")
+            self.logger.info(f"{input_path} -> {output_path}")
             return True
 
         except subprocess.CalledProcessError as e:
