@@ -216,8 +216,8 @@ def main() -> int:
     if args.dry_run:
         console.print("[yellow]DRY RUN - No files will be moved[/yellow]")
 
-    console.print(f" - Source:      [blue]{source}[/blue]")
-    console.print(f" - Destination: [blue]{dest}[/blue]")
+    console.print(f"Source:      [blue]{source}[/blue]")
+    console.print(f"Destination: [blue]{dest}[/blue]")
 
     # Find and process files
     media_files, metadata_files, livephoto_pairs = sorter.find_source_files()

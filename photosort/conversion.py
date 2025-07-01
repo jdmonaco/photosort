@@ -2,6 +2,7 @@
 Video conversion functionality using ffmpeg.
 """
 
+import os
 import json
 import logging
 import subprocess
@@ -82,6 +83,9 @@ class VideoConverter:
         # Create output directory
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
+        # Save file stat to restore on the output path
+        original_stat = input_path.stat()
+
         # Use temporary file to avoid partial writes
         with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as temp_file:
             temp_path = Path(temp_file.name)
@@ -90,13 +94,19 @@ class VideoConverter:
             # Build ffmpeg command for H.265/MP4 conversion
             cmd = [
                 "ffmpeg", "-i", str(input_path),
-                "-c:v", "libx265",    # H.265 video codec
-                "-preset", "medium",  # Encoding speed/quality balance
-                "-crf", "28",         # Quality setting (lower = better quality)
-                "-c:a", "aac",        # AAC audio codec
-                "-movflags",
-                "+faststart",         # Optimize for streaming
-                "-y",                 # Overwrite output
+                "-c:v", "libx265",          # H.265 video codec
+                "-c:a", "aac",              # AAC audio codec
+                "-ac", "2",                 # Stereo audio
+                "-ar", "48000",             # 48kHz sample rate
+                "-preset", "medium",        # Encoding speed/quality balance
+                "-movflags", "+faststart",  # Optimize for streaming
+                "-map_metadata", "0:g",     # Global metadata only
+                "-metadata:s:v", "encoder=libx265",
+                "-metadata:s:a", "encoder=aac",
+                "-pix_fmt", "yuv420p",      # QuickTime/macOS compatibility
+                "-crf", "23",               # Quality setting (lower = better quality)
+                "-tag:v hvc1",              # Correct fourCC code for H.265/MP4
+                "-y",                       # Overwrite output
                 str(temp_path),
             ]
 
@@ -110,8 +120,9 @@ class VideoConverter:
             if not temp_path.exists() or temp_path.stat().st_size == 0:
                 raise FileNotFoundError("Conversion produced no output")
 
-            # Move temp file to final location
+            # Move temp file to final location and restore original timestamps
             temp_path.rename(output_path)
+            os.utime(output_path, (original_stat.st_atime, original_stat.st_mtime))
 
             self.logger.info(f" * {input_path} -> {output_path}")
             return True
