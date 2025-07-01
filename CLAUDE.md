@@ -20,6 +20,7 @@ photosort/
 ├── conversion.py       # Video format conversion using ffmpeg (VideoConverter class)
 ├── core.py             # Core photo sorting logic (PhotoSorter class)
 ├── history.py          # Import history management (HistoryManager class)
+├── livephoto.py        # Live Photo processing (LivePhotoProcessor class)
 ├── permissions.py      # File permissions and group ownership utilities
 └── utils.py            # General utility functions
 ```
@@ -30,6 +31,7 @@ photosort/
 - **`photosort.config.Config`**: Manages YAML configuration and remembers user preferences
 - **`photosort.conversion.VideoConverter`**: Automatic video format conversion to H.265/MP4
 - **`photosort.history.HistoryManager`**: Manages import history, logging, and auxiliary file placement
+- **`photosort.livephoto.LivePhotoProcessor`**: Specialized Live Photo detection and processing
 - **`photosort.constants`**: File extension definitions and configuration constants
 - **`photosort.permissions`**: File mode and group ownership utilities
 - **`photosort.utils`**: Source directory cleanup and general utilities
@@ -109,7 +111,7 @@ Output structure: `YYYY/MM/YYYY-MM-DD_HH-MM-SS.ext`
 
 ### Core Processing (`photosort.core`)
 - `PhotoSorter.process_files()`: Main media file processing with progress tracking
-- `PhotoSorter.process_livephoto_pairs()`: Live Photo pair processing with shared basenames
+- `PhotoSorter.process_livephoto_pairs()`: Delegates Live Photo processing to LivePhotoProcessor
 - `PhotoSorter.process_metadata_files()`: Handles metadata files separately
 - `PhotoSorter.get_creation_date()`: Timezone-aware date extraction for photos and videos
 - `PhotoSorter._get_video_creation_date()`: JSON-based ffprobe parsing with EST/EDT conversion
@@ -117,13 +119,19 @@ Output structure: `YYYY/MM/YYYY-MM-DD_HH-MM-SS.ext`
 - `PhotoSorter.is_duplicate()`: Advanced duplicate detection with size/hash comparison
 - `PhotoSorter.get_destination_path()`: Generates timestamped destination paths
 
-### File Discovery and Live Photo Detection (`photosort.core`)
+### File Discovery (`photosort.core`)
 - `PhotoSorter.find_source_files()`: Returns 3-tuple of (media_files, metadata_files, livephoto_pairs)
-- `PhotoSorter._livephoto_sorting()`: Detects Live Photo pairs by ContentIdentifier matching
-- `PhotoSorter._livephoto_basename_fallback()`: Fallback Live Photo detection using filename basenames
-- `PhotoSorter._parse_livephoto_date()`: Extracts creation date with millisecond precision
-- `PhotoSorter._generate_livephoto_basename()`: Creates shared basenames for Live Photo pairs
+- Delegates Live Photo detection to LivePhotoProcessor
 - Separates processing streams for individual files, Live Photo pairs, and metadata
+
+### Live Photo Processing (`photosort.livephoto`)
+- `LivePhotoProcessor.detect_livephoto_pairs()`: Main detection orchestrator
+- `LivePhotoProcessor._detect_by_content_identifier()`: Primary ContentIdentifier-based detection
+- `LivePhotoProcessor._detect_by_basename_fallback()`: Fallback Live Photo detection using filename basenames
+- `LivePhotoProcessor._parse_livephoto_date()`: Extracts creation date with millisecond precision
+- `LivePhotoProcessor._generate_shared_basename()`: Creates shared basenames for Live Photo pairs
+- `LivePhotoProcessor.process_livephoto_pairs()`: Processes detected pairs with shared basenames
+- `LivePhotoProcessor._process_livephoto_file()`: Individual file processing with predetermined basename
 
 ### History Management (`photosort.history`)
 - `HistoryManager.__init__()`: Creates timestamped import folders
@@ -180,9 +188,15 @@ The `Config` class manages `~/.photosort/config.yml`:
 - **Graceful fallback**: Handles missing/corrupted config files without errors
 - **YAML format**: Human-readable configuration file format
 
-## Live Photo Processing (`photosort.core`)
+## Live Photo Processing (`photosort.livephoto`)
 
-The Live Photo system detects and processes Apple Live Photo pairs (image + video) to ensure they receive identical basenames and timestamps for proper photo management software support.
+The Live Photo system detects and processes Apple Live Photo pairs (image + video) to ensure they receive identical basenames and timestamps for proper photo management software support. This functionality is implemented in the dedicated `LivePhotoProcessor` class for better code organization and maintainability.
+
+### Architecture
+- **Dedicated Module**: Live Photo functionality extracted into `photosort.livephoto` module
+- **Processor Integration**: PhotoSorter creates and delegates to LivePhotoProcessor instance
+- **Shared Infrastructure**: LivePhotoProcessor uses PhotoSorter's video conversion, file operations, and history management
+- **Dependency Injection**: All required functions and objects passed to LivePhotoProcessor during initialization
 
 ### Detection Methods
 1. **Primary: ContentIdentifier Matching**
@@ -195,7 +209,7 @@ The Live Photo system detects and processes Apple Live Photo pairs (image + vide
    - Uses image file creation date for shared timestamp
 
 ### Processing Workflow
-1. **Detection Phase**: `_livephoto_sorting()` identifies pairs and returns remaining individual files
+1. **Detection Phase**: `detect_livephoto_pairs()` identifies pairs and returns remaining individual files
 2. **Processing Order**: Live Photo pairs processed first to avoid filename collisions
 3. **Shared Basenames**: Both files get identical `YYYYMMDD_HHMMSS_###` basenames with millisecond counters
 4. **Individual Processing**: Each file in pair processed with predetermined basename
@@ -267,6 +281,7 @@ The package exports these key classes and functions:
 - `photosort.VideoConverter`: Video format conversion class
 - `photosort.PhotoSorter`: Core photo sorting class
 - `photosort.HistoryManager`: Import history management class
+- `photosort.LivePhotoProcessor`: Live Photo detection and processing class
 
 ### Usage Examples
 
@@ -290,8 +305,10 @@ sorter.process_files(media_files)
 
 ### Module Dependencies
 - `cli.py` → `config.py`, `core.py`, `permissions.py`, `utils.py`
-- `core.py` → `constants.py`, `history.py` 
+- `core.py` → `constants.py`, `history.py`, `livephoto.py`, `conversion.py`
+- `livephoto.py` → `constants.py` (standalone with dependency injection from core.py)
 - `utils.py` → `constants.py`, `history.py`
+- `conversion.py` → standalone (only system modules)
 - `permissions.py` → standalone (only system modules)
 - `config.py` → standalone (only system modules + yaml)
 - `history.py` → standalone (only system modules)
@@ -304,6 +321,7 @@ sorter.process_files(media_files)
 
 ### Extensibility Points
 - **New file formats**: Add to `constants.py` extension lists
-- **Custom processors**: Subclass `PhotoSorter` for specialized behavior
+- **Custom processors**: Subclass `PhotoSorter` or `LivePhotoProcessor` for specialized behavior
 - **Alternative storage**: Implement custom `HistoryManager` subclasses
+- **Live Photo enhancements**: Modify `LivePhotoProcessor` for new detection methods or processing logic
 - **Plugin system**: Future enhancement for custom processing pipelines

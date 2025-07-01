@@ -204,5 +204,5 @@ uv run pytest
 uv run black .
 
 # Type checking
-uv run mypy photosort.py
+uv run mypy photosort/
 ```

@@ -15,5 +15,6 @@ from .config import Config
 from .conversion import VideoConverter
 from .core import PhotoSorter
 from .history import HistoryManager
+from .livephoto import LivePhotoProcessor
 
-__all__ = ["main", "Config", "VideoConverter", "PhotoSorter", "HistoryManager"]
+__all__ = ["main", "Config", "VideoConverter", "PhotoSorter", "HistoryManager", "LivePhotoProcessor"]
