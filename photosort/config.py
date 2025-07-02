@@ -63,10 +63,6 @@ class Config:
         """Get the saved group setting."""
         return self.data.get('group')
 
-    def get_convert_videos(self) -> bool:
-        """Get the video conversion setting (default: True)."""
-        return self.data.get('convert_videos', True)
-
     def get_timezone(self) -> Optional[str]:
         """Get the saved timezone setting."""
         return self.data.get('timezone')

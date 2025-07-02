@@ -51,7 +51,7 @@ def set_directory_groups(dest_path: Path, group_name: str, console: Console) -> 
 def install_bash_completion() -> int:
     """Install bash completion script to user's environment."""
     console = Console()
-    
+
     # Get the completion script content from package data
     try:
         # Use modern Python approach (3.9+) with fallback
@@ -66,7 +66,7 @@ def install_bash_completion() -> int:
             completion_script = pkg_resources.resource_string(
                 'photosort', 'completion/photosort-completion.bash'
             ).decode('utf-8')
-                
+
     except Exception as e:
         console.print(f"[red]Failed to load completion script from package: {e}[/red]")
         console.print("You can manually install using scripts/install-completion.sh")
@@ -80,36 +80,36 @@ def install_bash_completion() -> int:
         bashrc_path = Path.home() / ".bashrc"
         marker_start = "# >>> photosort completion >>>"
         marker_end = "# <<< photosort completion <<<"
-        
+
         # Check if completion is already installed
         if bashrc_path.exists():
             content = bashrc_path.read_text()
             if marker_start in content:
                 console.print("[yellow]Photosort completion already installed in ~/.bashrc[/yellow]")
                 return 0
-        
+
         # Ensure photosort config directory exists
         config.program_root.mkdir(exist_ok=True)
-        
+
         # Write completion script to ~/.photosort/completion.bash
         with open(completion_path, "w") as f:
             f.write(completion_script)
-        
+
         # Add source line to .bashrc
         completion_block = f"""
 {marker_start}
 [ -r {completion_path} ] && source {completion_path}
 {marker_end}
 """
-        
+
         with open(bashrc_path, "a") as f:
             f.write(completion_block)
-        
+
         console.print(f"[green]✓ Completion script saved to {completion_path}[/green]")
         console.print("[green]✓ Bash completion installed to ~/.bashrc[/green]")
         console.print("Run 'source ~/.bashrc' or restart your terminal to enable completion")
         return 0
-        
+
     except Exception as e:
         console.print(f"[red]Failed to install completion: {e}[/red]")
         console.print("You can manually add the completion script from the 'completion/' directory")
@@ -123,7 +123,6 @@ def create_parser(config: Config) -> argparse.ArgumentParser:
     file_mode = config.get_file_mode()
     group = config.get_group()
     timezone = config.get_timezone()
-    convert_videos = config.get_convert_videos()
 
     # Create help text that shows current defaults
     source_help = "Source directory containing photos to organize"
@@ -131,7 +130,7 @@ def create_parser(config: Config) -> argparse.ArgumentParser:
     mode_help = "File permissions mode in octal format (e.g., 644, 664, 400)"
     group_help = "Group ownership for organized files (e.g., staff, users, wheel)"
     timezone_help = "Default timezone for creation time metadata if missing"
-    video_help = "Disable automatic conversion of legacy video formats to H.265/MP4"
+    video_help = "Disable automatic HEVC/H.265 conversion of legacy video formats"
     version_help = f"Display the version number of {PROGRAM} and exit"
 
     if last_source:
@@ -152,7 +151,7 @@ def create_parser(config: Config) -> argparse.ArgumentParser:
         timezone_help += " (default: America/New_York)"
 
     parser = argparse.ArgumentParser(
-        description="Smart organizer for importing photos and videos",
+        description="Smart organizer for sorting and importing photos and videos",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=f"""
 Examples:
