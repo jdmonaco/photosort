@@ -7,7 +7,7 @@ A modern Python tool for organizing photos and videos into a clean year/month fo
 ### Core Organization
 - **Smart Organization**: Automatically sorts photos and videos by creation date into `YYYY/MM/` folders
 - **Live Photo Detection**: Detects Apple Live Photo pairs using ContentIdentifier matching with basename fallback
-- **Live Photo Processing**: Ensures paired files get identical basenames with millisecond precision
+- **Live Photo Processing**: Ensures paired files get identical basenames with millisecond timestamps
 - **Multiple Media Types**: Supports photos (JPG, RAW formats), videos, and handles metadata files separately
 - **Clean Destinations**: Only organized media in destination folders - auxiliary files moved to history
 - **Auto Source Cleanup**: Automatically cleans and removes empty directories from source after moving
@@ -28,7 +28,7 @@ A modern Python tool for organizing photos and videos into a clean year/month fo
 
 ## Installation
 
-### With UV (Recommended)
+### With uv (Recommended)
 
 Install as a tool in an isolated environment:
 ```bash
@@ -44,7 +44,7 @@ uv run photosort --help
 
 Clone and install in development mode:
 ```bash
-git clone <repository-url>
+git clone ssh://git@forge.joemona.co:2222/joe/photosort.git
 cd photosort
 uv sync
 uv run photosort --help
@@ -151,16 +151,16 @@ Photos and videos are organized into this clean structure:
 Destination/
 ├── 2024/
 │   ├── 01/
-│   │   ├── 20240115_143022.jpg
-│   │   ├── 20240115_164510.mp4      # Videos sorted alongside photos
+│   │   ├── 20240115_143022_000.jpg  # Regular photos with zero-based counters
+│   │   ├── 20240115_164510_000.mp4  # Videos sorted with photos by creation time
 │   │   ├── 20240120_123045_000.jpg
-│   │   ├── 20240120_123045_001.jpg  # Sequential counter for multiple files same time
+│   │   ├── 20240120_123045_001.jpg  # Sequential counter for photo bursts
 │   │   └── 20240120_123045_002.jpg
 │   └── 02/
 │       ├── 20240203_091533_045.jpg  # Live Photo pairs share base filename
-│       ├── 20240203_091533_045.mov  # with millisecond precision counters
-│       ├── 20240203_091834_000.jpg  # Regular photos with standard counters
-│       └── 20240203_091834_000.mp4  # Individual video files
+│       ├── 20240203_091533_045.mov  # with millisecond precision suffix
+│       ├── 20240203_091834_000.jpg  
+│       └── 20240203_091834_000.mp4  # Legacy video codecs converted to HEVC/H.265
 ```
 
 ### Import History Structure
@@ -180,7 +180,7 @@ All auxiliary files are preserved in a searchable history:
     │   │   ├── IMG_1234.aae
     │   │   └── config.xml
     │   ├── UnknownFiles/              # Unrecognized file types
-    │   └── Unsorted/                  # Files that couldn't be processed
+    │   └── Unsorted/                  # Any files that couldn't be processed
     └── 2024-06-25+Archive-Photos/
         └── (similar structure)
 ```
