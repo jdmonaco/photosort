@@ -8,7 +8,7 @@ Created with the assistance of Claude Code. MIT License.
 """
 
 __version__ = "2.0.0"
-__copyright__ = "Copyright (c) 2025 Joseph D. Monaco (joe@selfmotion.net)"
+__copyright__ = "Copyright (c) 2025 Joe Monaco (joe@selfmotion.net)"
 
 
 # Public API

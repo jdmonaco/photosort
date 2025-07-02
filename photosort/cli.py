@@ -81,7 +81,7 @@ def create_parser(config: Config) -> argparse.ArgumentParser:
     if timezone:
         timezone_help += f" (default: {timezone})"
     else:
-        timezone_help += " (default: America/New York)"
+        timezone_help += " (default: America/New_York)"
 
     parser = argparse.ArgumentParser(
         description="Smart organizer for importing photos and videos",

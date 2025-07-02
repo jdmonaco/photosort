@@ -110,6 +110,7 @@ photosort --help
 - `--dry-run`, `-n`: Preview operations without making changes
 - `--copy`, `-c`: Copy files instead of moving them (default is to move)
 - `--verbose`, `-v`: Enable detailed logging
+- `--version`, `-V`: Display version number and exit (use with `--verbose` for detailed info)
 
 #### File Ownership
 - `--mode`, `-m`: File permissions in octal format (e.g., 644, 664, 400)
@@ -119,7 +120,7 @@ photosort --help
 - `--no-convert-videos`: Disable automatic conversion of legacy video formats to H.265/MP4
 
 #### Timezone Configuration
-- `--timezone`, `--tz`: Set default timezone for video metadata (e.g., "America/New_York")
+- `--timezone`, `--tz`: Set default timezone for video metadata (e.g., "America/New_York", "Europe/London")
 
 ## File Organization
 

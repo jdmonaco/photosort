@@ -37,7 +37,7 @@ class PhotoSorter:
     def __init__(self, source: Path, dest: Path, root_dir: Optional[Path],
                  dry_run: bool = False, move_files: bool = True,
                  file_mode: Optional[int] = None, group_gid: Optional[int] = None,
-                 timezone: str = "America/New York", convert_videos: bool = True):
+                 timezone: str = "America/New_York", convert_videos: bool = True):
         self.source = source
         self.dest = dest
         self.dry_run = dry_run
