@@ -1,5 +1,5 @@
 """
-Shared file operations and utilities for PhotoSorter and LivePhotoProcessor.
+Shared file operations and utilities for photo and video organization.
 """
 
 import hashlib
@@ -15,7 +15,7 @@ from .constants import JPG_EXTENSIONS, NUISANCE_EXTENSIONS, PROGRAM
 
 
 class FileOperations:
-    """Utility class for shared file operations."""
+    """Utility class for file operations, duplicate detection, permissions, and cleanup."""
 
     def __init__(self, dry_run: bool, move_files: bool, mode: Optional[int],
                  gid: Optional[int]):
@@ -89,7 +89,7 @@ class FileOperations:
             return False
 
     def move_file_safely(self, source: Path, dest: Path) -> bool:
-        """Move file with validation."""
+        """Move or copy file with validation, permissions, and dry-run support."""
         if self.dry_run:
             return True
 
@@ -126,11 +126,11 @@ class FileOperations:
             return False
 
     def ensure_directory(self, directory: Path) -> None:
-        """Create directory if needed and not in dry-run mode."""
+        """Create directory and parents if needed, with dry-run support."""
         if not self.dry_run and not directory.exists():
             directory.mkdir(parents=True, exist_ok=True)
 
-    def image_creation_date(self, image_path: Path) -> str:
+    def image_creation_date(self, image_path: Path) -> datetime:
         """Get creation time for any image using sips or file modification time."""
         if self.sips_available:
             try:
@@ -223,7 +223,7 @@ class FileOperations:
                                   original_path: Path, processing_path: Path,
                                   temp_converted_file: Optional[Path], source_root: Path,
                                   legacy_dir: Path) -> None:
-        """Handle cleanup after video conversion based on mode."""
+        """Handle cleanup after video conversion, archiving originals and removing temp files."""
         if not needs_conversion or self.dry_run:
             return
 
@@ -241,7 +241,7 @@ class FileOperations:
     def handle_duplicate_cleanup(self, processing_file: Path, original_file: Path,
                                  needs_conversion: bool, move_files: bool,
                                  temp_converted_file: Optional[Path]) -> None:
-        """Handle cleanup when duplicate files are detected."""
+        """Handle cleanup when duplicate files are detected, removing sources or temp files."""
         if self.dry_run:
             return
 
@@ -265,7 +265,7 @@ class FileOperations:
 
     def cleanup_failed_conversion(self, original_file: Path, processing_file: Path,
                                   temp_converted_file: Optional[Path], error_dir: Path) -> None:
-        """Clean up files when conversion fails."""
+        """Clean up files when conversion fails, moving originals to error directory."""
         if self.dry_run:
             return
 
@@ -282,7 +282,7 @@ class FileOperations:
     def cleanup_failed_move(self, original_file: Path, processing_file: Path,
                             temp_converted_file: Optional[Path], needs_conversion: bool,
                             error_dir: Path) -> None:
-        """Clean up files when move operation fails."""
+        """Clean up files when move operation fails, preserving originals in error directory."""
         if self.dry_run:
             return
 
@@ -304,7 +304,7 @@ class FileOperations:
                 pass
 
     def cleanup_source_directory(self, source: Path, unsorted_path: Path) -> None:
-        """Clean up source by pruning empty folders and moving unknown files."""
+        """Clean up source directory by removing nuisance files, pruning empty folders, and moving unknowns."""
         if not any(source.iterdir()):
             return
 

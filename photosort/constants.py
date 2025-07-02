@@ -1,5 +1,5 @@
 """
-File extension constants and settings for photo organization.
+File extension constants, program metadata, and settings for photo organization.
 """
 
 # Program metadata

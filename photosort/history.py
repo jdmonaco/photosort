@@ -1,5 +1,5 @@
 """
-Import history management for the photo and video organizer.
+Import history management for photosort.
 """
 
 import logging

@@ -13,7 +13,7 @@ from .constants import PROGRAM
 
 
 class Config:
-    """Manages configuration file for storing user preferences."""
+    """Manages YAML configuration file for storing and auto-saving user preferences."""
 
     def __init__(self, config_path: Optional[Path] = None):
         # Default config location: ~/.<PROGRAM>/config.yml

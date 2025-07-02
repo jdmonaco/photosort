@@ -213,7 +213,7 @@ class PhotoSorter:
         return self.file_ops.image_creation_date(file_path)
 
     def find_source_files(self) -> Tuple[List[Path], List[Path], Dict[str, Dict]]:
-        """Find all files in source directory, separated by type."""
+        """Find all files in source directory, separated by media files, metadata files, and Live Photo pairs."""
         media_files = []
         metadata_files = []
 
@@ -261,7 +261,7 @@ class PhotoSorter:
         return dest_file
 
     def process_metadata_files(self, metadata_files: List[Path]) -> None:
-        """Process metadata files by moving them to Metadata directory."""
+        """Process metadata files by moving them to history Metadata directory."""
         if not metadata_files:
             return
 
