@@ -2,7 +2,7 @@
 # Manual completion installation script for photosort
 # This can be used if the --install-completion option doesn't work
 
-COMPLETION_DIR="$(dirname "$0")/../completion"
+COMPLETION_DIR="$(dirname "$0")/../photosort/completion"
 COMPLETION_FILE="$COMPLETION_DIR/photosort-completion.bash"
 PHOTOSORT_DIR="$HOME/.photosort"
 COMPLETION_DEST="$PHOTOSORT_DIR/completion.bash"
