@@ -299,17 +299,12 @@ class LivePhotoProcessor:
             processing_file = file_path
             temp_converted_file = None
             if needs_conversion:
-                # In COPY mode, use temp directory to avoid polluting source
-                if not self.move_files:
-                    # Create temp file for conversion
-                    temp_fd, temp_path = tempfile.mkstemp(suffix=".mp4", prefix="photosort_lp_")
-                    os.close(temp_fd)  # Close file descriptor, keep path
-                    converted_path = Path(temp_path)
-                    temp_converted_file = converted_path
-                else:
-                    # In MOVE mode, convert in source directory as before
-                    converted_name = file_path.stem + ".mp4"
-                    converted_path = file_path.parent / converted_name
+                # Always use temp directory for conversion to avoid polluting source
+                # Create temp file for conversion
+                temp_fd, temp_path = tempfile.mkstemp(suffix=".mp4", prefix="photosort_lp_")
+                os.close(temp_fd)  # Close file descriptor, keep path
+                converted_path = Path(temp_path)
+                temp_converted_file = converted_path
 
                 progress.update(task, description=f"Converting Live Photo: {file_path.name}")
                 if self.video_converter.convert_video(file_path, converted_path, progress, task):

@@ -242,24 +242,24 @@ The Live Photo system detects and processes Apple Live Photo pairs (image + vide
 
 ## Video Conversion Modes (`photosort.conversion`)
 
-Video conversion behavior adapts based on the file operation mode to maintain source directory integrity.
+Video conversion uses a unified tempfile approach for both COPY and MOVE modes to maintain clean source directory handling.
 
-### COPY Mode (`--copy`)
-- **Temp Directory Conversion**: Creates converted files in system temp directory
-- **Source Preservation**: Source directory remains completely untouched
-- **Clean Operation**: Only converted video appears in destination, temp files cleaned up
-- **Original Archival**: Original video copied to history `LegacyVideos/` directory
-
-### MOVE Mode (default)
-- **In-Source Conversion**: Creates converted files in source directory for efficiency
-- **Source Cleanup**: Converted files moved to destination, originals to legacy archive
-- **Existing Behavior**: Maintains backward compatibility with previous versions
+### Unified Conversion Approach
+- **Temp Directory Conversion**: All video conversions use system temp directory regardless of mode
+- **Source Preservation**: Source directory never gets polluted during conversion process
+- **Clean Operation**: Converted video appears in destination, temp files automatically cleaned up
+- **Mode-Specific Archival**: Original video handling differs by mode:
+  - **COPY Mode**: Original video copied to history `LegacyVideos/` directory
+  - **MOVE Mode**: Original video moved to history `LegacyVideos/` directory
 
 ### Conversion Process
 1. **Codec Detection**: Uses ffprobe to identify non-modern video codecs
-2. **H.265 Encoding**: Converts with libx265, CRF 28 quality, AAC audio
-3. **Metadata Preservation**: Maintains creation dates and global metadata
-4. **Archival**: Original videos preserved in timestamped history directories
+2. **Temp File Creation**: Creates temporary converted file using system temp directory
+3. **H.265 Encoding**: Converts with libx265, CRF 28 quality, AAC audio
+4. **Metadata Preservation**: Maintains creation dates and global metadata
+5. **Atomic Move**: Moves converted file from temp to destination
+6. **Cleanup**: Archives original and removes temp files
+7. **Archival**: Original videos preserved in timestamped history directories
 
 ## CLI Arguments
 

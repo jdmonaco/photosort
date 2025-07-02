@@ -230,8 +230,8 @@ class FileOperations:
         # Archive original video
         self.archive_original_video(original_path, source_root, legacy_dir, move_files)
 
-        # Clean up temp converted file in COPY mode
-        if not move_files and temp_converted_file and temp_converted_file.exists():
+        # Clean up temp converted file (always present now since we always use temp files)
+        if temp_converted_file and temp_converted_file.exists():
             try:
                 temp_converted_file.unlink()
                 self.logger.debug(f"Cleaned up temp converted file: {temp_converted_file}")
@@ -245,23 +245,21 @@ class FileOperations:
         if self.dry_run:
             return
 
-        if move_files:
-            # MOVE mode: delete source files
+        # Clean up temp converted file if conversion happened (always present now)
+        if needs_conversion and temp_converted_file and temp_converted_file.exists():
             try:
-                processing_file.unlink()
-                if needs_conversion and original_file != processing_file and original_file.exists():
-                    original_file.unlink()
-                self.logger.debug(f"Deleted duplicate source file: {processing_file}")
+                temp_converted_file.unlink()
+                self.logger.debug(f"Cleaned up temp converted file: {temp_converted_file}")
             except Exception as e:
-                self.logger.warning(f"Could not delete duplicate source file {processing_file}: {e}")
-        else:
-            # COPY mode: clean up temp converted file only
-            if temp_converted_file and temp_converted_file.exists():
-                try:
-                    temp_converted_file.unlink()
-                    self.logger.debug(f"Cleaned up temp converted file: {temp_converted_file}")
-                except Exception as e:
-                    self.logger.warning(f"Could not clean up temp file {temp_converted_file}: {e}")
+                self.logger.warning(f"Could not clean up temp file {temp_converted_file}: {e}")
+
+        if move_files:
+            # MOVE mode: delete original source file
+            try:
+                original_file.unlink()
+                self.logger.debug(f"Deleted duplicate source file: {original_file}")
+            except Exception as e:
+                self.logger.warning(f"Could not delete duplicate source file {original_file}: {e}")
 
     def cleanup_failed_conversion(self, original_file: Path, processing_file: Path,
                                   temp_converted_file: Optional[Path], error_dir: Path) -> None:
@@ -289,15 +287,8 @@ class FileOperations:
         # Move original to error directory
         self.move_to_error_directory(original_file, error_dir)
 
-        # Clean up converted file if conversion happened but move failed
-        if needs_conversion and processing_file != original_file and processing_file.exists():
-            try:
-                processing_file.unlink()
-            except Exception:
-                pass
-
-        # Also clean up temp file in COPY mode
-        if temp_converted_file and temp_converted_file.exists():
+        # Clean up temp converted file if conversion happened (always temp file now)
+        if needs_conversion and temp_converted_file and temp_converted_file.exists():
             try:
                 temp_converted_file.unlink()
             except Exception:

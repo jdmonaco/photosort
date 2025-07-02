@@ -95,10 +95,6 @@ class PhotoSorter:
             file_ops=self.file_ops, stats=self.stats, logger=self.logger
         )
 
-        # Create main destination directory
-        if not self.dry_run:
-            self.file_ops.ensure_directory(self.dest)
-
     def _get_video_creation_date(self, file_path: Path) -> Optional[datetime]:
         """Extract creation date from video metadata using ffprobe with Apple QuickTime priority."""
         try:
@@ -327,17 +323,12 @@ class PhotoSorter:
         processing_file = file_path
         temp_converted_file = None
         if needs_conversion:
-            # In COPY mode, use temp directory to avoid polluting source
-            if not self.move_files:
-                # Create temp file for conversion
-                temp_fd, temp_path = tempfile.mkstemp(suffix=".mp4", prefix=f"{PROGRAM}_")
-                os.close(temp_fd)  # Close file descriptor, keep path
-                converted_path = Path(temp_path)
-                temp_converted_file = converted_path
-            else:
-                # In MOVE mode, convert in source directory as before
-                converted_name = file_path.stem + ".mp4"
-                converted_path = file_path.parent / converted_name
+            # Always use temp directory for conversion to avoid polluting source
+            # Create temp file for conversion
+            temp_fd, temp_path = tempfile.mkstemp(suffix=".mp4", prefix=f"{PROGRAM}_")
+            os.close(temp_fd)  # Close file descriptor, keep path
+            converted_path = Path(temp_path)
+            temp_converted_file = converted_path
 
             # Convert the video
             progress.update(task, description=f"Converting: {file_path.name}")
@@ -388,9 +379,8 @@ class PhotoSorter:
                         self.legacy_videos_dir
                 )
 
-            # Update stats
+            # Update stats and progress
             self.file_ops.update_file_stats(self.stats, is_video, file_size)
-
             progress.update(task, description=f"Processed: {file_path.name}")
         else:
             self.stats['errors'] += 1
