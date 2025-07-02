@@ -3,16 +3,49 @@ Command-line interface for photosort.
 """
 
 import argparse
+import grp
 import logging
+import re
+import subprocess
 import sys
 from pathlib import Path
 
 from rich.console import Console
 
 from .config import Config
+from .constants import PROGRAM
 from .core import PhotoSorter
-from .permissions import parse_file_mode, parse_group, set_directory_groups
-from .utils import cleanup_source_directory
+
+
+def parse_file_mode(mode_str: str) -> int:
+    """Convert octal string (e.g., '644') to integer mode."""
+    try:
+        # Ensure it's a valid octal string (3-4 digits, 0-7 only)
+        if not re.match(r'^[0-7]{3,4}$', mode_str):
+            raise ValueError(f"Invalid mode format: {mode_str}")
+        return int(mode_str, 8)
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(f"Invalid file mode: {e}")
+
+
+def parse_group(group_str: str) -> int:
+    """Convert group name to GID with validation."""
+    try:
+        return grp.getgrnam(group_str).gr_gid
+    except KeyError:
+        raise argparse.ArgumentTypeError(f"Group '{group_str}' not found on system")
+
+
+def set_directory_groups(dest_path: Path, group_name: str, console: Console) -> None:
+    """Set group ownership on all directories in destination path."""
+    try:
+        result = subprocess.run(
+            ["find", str(dest_path), "-type", "d", "-exec", "chgrp", group_name, "{}", "+"],
+            capture_output=True, text=True, check=True
+        )
+        console.print(f"Applied group '{group_name}' to destination directories")
+    except subprocess.CalledProcessError as e:
+        console.print(f"[yellow]Warning: Could not set group on directories: {e}[/yellow]")
 
 
 def create_parser(config: Config) -> argparse.ArgumentParser:
@@ -31,6 +64,7 @@ def create_parser(config: Config) -> argparse.ArgumentParser:
     group_help = "Group ownership for organized files (e.g., staff, users, wheel)"
     timezone_help = "Default timezone for creation time metadata if missing"
     video_help = "Disable automatic conversion of legacy video formats to H.265/MP4"
+    version_help = f"Display the version number of {PROGRAM} and exit"
 
     if last_source:
         source_help += f" (default: {last_source})"
@@ -47,21 +81,16 @@ def create_parser(config: Config) -> argparse.ArgumentParser:
     if timezone:
         timezone_help += f" (default: {timezone})"
     else:
-        timezone_help += "default: America/New York"
-    if convert_videos:
-        video_help += " (conversion enabled)"
-    else:
-        video_help += " (conversion disabled)"
-
+        timezone_help += " (default: America/New York)"
 
     parser = argparse.ArgumentParser(
         description="Smart organizer for importing photos and videos",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
+        epilog=f"""
 Examples:
-  photosort ~/Downloads/Photos ~/Pictures/Organized
-  photosort --dry-run
-  photosort --source ~/Desktop/NewPhotos
+  {PROGRAM} ~/Downloads/Photos ~/Pictures/Organized
+  {PROGRAM} --dry-run
+  {PROGRAM} --source ~/Desktop/NewPhotos
         """
     )
 
@@ -109,6 +138,10 @@ Examples:
         "--no-convert-videos", action="store_true",
         help=video_help
     )
+    parser.add_argument(
+        "--version", "-V", action="store_true",
+        help=version_help
+    )
 
     return parser
 
@@ -118,6 +151,17 @@ def main() -> int:
     config = Config()
     parser = create_parser(config)
     args = parser.parse_args()
+
+    # Handle version option
+    if args.version:
+        from . import __version__, __copyright__
+        if args.verbose:
+            print(f"{PROGRAM} version {__version__} {__copyright__}")
+            print(f"Imports: {config.program_root}")
+            print(f"Config:  {config.config_path}")
+            return 0
+        print(__version__)
+        return 0
 
     # Determine source and destination
     source_path = (args.source_override or args.source or
@@ -186,23 +230,18 @@ def main() -> int:
     if hasattr(args, 'timezone') and args.timezone:
         config.update_timezone(args.timezone)
 
-    # Handle video conversion setting
-    convert_videos = not args.no_convert_videos  # Invert since flag disables conversion
-    if args.no_convert_videos and config.get_convert_videos():
-        # User is disabling conversion, save this preference
-        config.update_convert_videos(False)
-    elif not args.no_convert_videos and not config.get_convert_videos():
-        # User is re-enabling conversion (default behavior), save this preference
-        config.update_convert_videos(True)
+    # Handle video conversion setting - invert since flag disables conversion
+    convert_videos = not args.no_convert_videos
 
     # Set up logging level
     if args.verbose:
-        logging.getLogger("photosort").setLevel(logging.DEBUG)
+        logging.getLogger(PROGRAM).setLevel(logging.DEBUG)
 
     # Create sorter and process files
     sorter = PhotoSorter(
         source=source,
         dest=dest,
+        root_dir=config.program_root,
         dry_run=args.dry_run,
         move_files=not args.copy,
         file_mode=file_mode,
@@ -247,7 +286,9 @@ def main() -> int:
 
         # If moving files (and not dry-run), clean up the source directory
         if not args.copy and not args.dry_run:
-            cleanup_source_directory(source, sorter.history_manager, console)
+            sorter.file_ops.cleanup_source_directory(
+                    source, sorter.history_manager.get_unknown_files_dir()
+            )
 
         sorter.print_summary()
 
@@ -277,3 +318,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+

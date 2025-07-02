@@ -11,7 +11,7 @@ import shutil
 import subprocess
 import tempfile
 import zoneinfo
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -20,11 +20,13 @@ from rich.logging import RichHandler
 from rich.progress import Progress, TaskID
 from rich.table import Table
 
+from .config import Config
 from .constants import (
     JPG_EXTENSIONS, METADATA_EXTENSIONS, MOVIE_EXTENSIONS,
-    PHOTO_EXTENSIONS, VALID_EXTENSIONS
+    PHOTO_EXTENSIONS, PROGRAM, VALID_EXTENSIONS
 )
 from .conversion import VideoConverter
+from .file_operations import FileOperations
 from .history import HistoryManager
 from .livephoto import LivePhotoProcessor
 
@@ -32,10 +34,10 @@ from .livephoto import LivePhotoProcessor
 class PhotoSorter:
     """Main class for organizing photos and videos."""
 
-    def __init__(self, source: Path, dest: Path, dry_run: bool = False,
-                 move_files: bool = True, file_mode: Optional[int] = None,
-                 group_gid: Optional[int] = None, timezone: str = "America/New York",
-                 convert_videos: bool = True):
+    def __init__(self, source: Path, dest: Path, root_dir: Optional[Path],
+                 dry_run: bool = False, move_files: bool = True,
+                 file_mode: Optional[int] = None, group_gid: Optional[int] = None,
+                 timezone: str = "America/New York", convert_videos: bool = True):
         self.source = source
         self.dest = dest
         self.dry_run = dry_run
@@ -44,6 +46,7 @@ class PhotoSorter:
         self.group_gid = group_gid
         self.timezone = timezone
         self.convert_videos = convert_videos
+        self.root_dir = root_dir or Path.home() / f".{PROGRAM}"
         self.console = Console()
         self.stats = {
             'photos': 0, 'videos': 0, 'metadata': 0,
@@ -51,41 +54,35 @@ class PhotoSorter:
             'converted_videos': 0, 'livephoto_pairs': 0
         }
 
-        # Setup history manager for import tracking and auxiliary directories
-        self.history_manager = HistoryManager(dest, dry_run)
-
-        # Setup video converter
-        self.video_converter = VideoConverter(dry_run)
-
-        # Setup Live Photo processor
-        self.live_photo_processor = None  # Will be initialized after logging setup
-
         # Setup logging with separate console and file levels
         console_handler = RichHandler(console=self.console, rich_tracebacks=True)
         console_handler.setLevel(logging.WARNING)  # Only WARNING and ERROR to console
         console_handler.setFormatter(logging.Formatter("%(message)s"))
-
         logging.basicConfig(
             level=logging.DEBUG,  # Allow all messages to reach handlers
             format="%(message)s",
             datefmt="[%X]",
             handlers=[console_handler]
         )
-        self.logger = logging.getLogger("photosort")
+        self.logger = logging.getLogger(PROGRAM)
 
-        # Setup import-specific logging
+        # Initialize file operations utility
+        self.file_ops = FileOperations(dry_run=dry_run, move_files=move_files,
+                                       mode=self.file_mode, gid=self.group_gid)
+
+        # Setup history manager for import tracking and auxiliary directories
+        self.history_manager = HistoryManager(dest_path=dest, root_dir=self.root_dir,
+                                              file_ops=self.file_ops, dry_run=dry_run)
         self.history_manager.setup_import_logger(self.logger)
 
-        # Determine availability of metadata extraction tools
-        self._exiftool_available = self._is_tool_available("exiftool", "-ver")
-        self._sips_available = self._is_tool_available("sips", "-v")
-        self._ffprobe_available = self._is_tool_available("ffprobe", "-version")
+        # Setup video converter
+        self.video_converter = VideoConverter(file_ops=self.file_ops, dry_run=dry_run)
 
         # Log the start of import session
-        self.logger.info(f"Starting PhotoSorter session: {self.source} -> {self.dest}")
+        self.logger.info(f"Starting import session: {self.source} -> {self.dest}")
         self.logger.info(f"Mode: {'DRY RUN' if self.dry_run else 'MOVE' if self.move_files else 'COPY'}")
 
-        # Set up directory paths using history manager
+        # Retrieve directory paths from history manager
         self.error_dir = self.history_manager.get_unsorted_dir()
         self.metadata_dir = self.history_manager.get_metadata_dir()
         self.legacy_videos_dir = self.history_manager.get_legacy_videos_dir()
@@ -93,67 +90,23 @@ class PhotoSorter:
         # Initialize Live Photo processor with dependencies
         self.live_photo_processor = LivePhotoProcessor(
             source=source, dest=dest, dry_run=dry_run, move_files=move_files,
-            file_mode=file_mode, group_gid=group_gid, timezone=timezone,
-            convert_videos=convert_videos, video_converter=self.video_converter,
-            history_manager=self.history_manager, get_creation_date_func=self.get_creation_date,
-            move_file_safely_func=self.move_file_safely, is_duplicate_func=self.is_duplicate,
-            logger=self.logger, stats=self.stats
+            file_mode=file_mode, group_gid=group_gid, convert_videos=convert_videos,
+            video_converter=self.video_converter, history_manager=self.history_manager,
+            file_ops=self.file_ops, stats=self.stats, logger=self.logger
         )
 
         # Create main destination directory
         if not self.dry_run:
-            self.dest.mkdir(parents=True, exist_ok=True)
-
-    def _is_tool_available(self, cmd: str, vers: str = "-h") -> bool:
-        """Check availability of a command-line tool on this system."""
-        try:
-            subprocess.run([cmd, vers], capture_output=True, check=True)
-            return True
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            return False
-
-    def _ensure_error_dir(self) -> None:
-        """Create error directory if needed and not in dry-run mode."""
-        if not self.dry_run and not self.error_dir.exists():
-            self.error_dir.mkdir(exist_ok=True)
-
-    def _ensure_metadata_dir(self) -> None:
-        """Create metadata directory if needed and not in dry-run mode."""
-        if not self.dry_run and not self.metadata_dir.exists():
-            self.metadata_dir.mkdir(exist_ok=True)
-
-    def _ensure_legacy_videos_dir(self) -> None:
-        """Create legacy videos directory if needed and not in dry-run mode."""
-        if not self.dry_run and not self.legacy_videos_dir.exists():
-            self.legacy_videos_dir.mkdir(exist_ok=True)
-
-    def _apply_file_permissions(self, file_path: Path, mode: Optional[int]) -> None:
-        """Apply file permissions if mode is specified."""
-        if self.dry_run or mode is None:
-            return
-
-        try:
-            os.chmod(file_path, mode)
-        except Exception as e:
-            self.logger.error(f"Failed to set permissions on {file_path}: {e}")
-
-    def _apply_file_group(self, file_path: Path, gid: Optional[int]) -> None:
-        """Apply file group ownership if gid is specified."""
-        if self.dry_run or gid is None:
-            return
-
-        try:
-            os.chown(file_path, -1, gid)  # -1 preserves current owner
-        except Exception as e:
-            self.logger.error(f"Failed to set group on {file_path}: {e}")
+            self.file_ops.ensure_directory(self.dest)
 
     def _get_video_creation_date(self, file_path: Path) -> Optional[datetime]:
         """Extract creation date from video metadata using ffprobe with Apple QuickTime priority."""
         try:
             # Use ffprobe to get format metadata as JSON
             result = subprocess.run([
-                "ffprobe", "-v", "quiet", "-print_format", "json",
-                "-show_format", str(file_path)
+                "ffprobe", "-v", "quiet",
+                "-print_format", "json", "-show_format",
+                str(file_path)
             ], capture_output=True, text=True, check=True)
 
             # Parse JSON output
@@ -256,25 +209,8 @@ class PhotoSorter:
             if video_date:
                 return video_date
 
-        # Handle photo files with sips command
-        if self._sips_available:
-            try:
-                result = subprocess.run(
-                    ["sips", "-g", "creation", str(file_path)],
-                    capture_output=True, text=True, check=True
-                )
-
-                # Parse sips output
-                for line in result.stdout.split('\n'):
-                    if 'creation:' in line:
-                        date_str = line.split('creation: ')[1].strip()
-                        return datetime.strptime(date_str, "%Y:%m:%d %H:%M:%S")
-
-            except (subprocess.CalledProcessError, Exception):
-                pass
-
-        # Fallback to file modification time for photos
-        return datetime.fromtimestamp(file_path.stat().st_mtime)
+        # Handle all other photo files
+        return self.file_ops.image_creation_date(file_path)
 
     def find_source_files(self) -> Tuple[List[Path], List[Path], Dict[str, Dict]]:
         """Find all files in source directory, separated by type."""
@@ -298,40 +234,6 @@ class PhotoSorter:
 
         return sorted(media_files), sorted(metadata_files), livephoto_pairs
 
-    def is_duplicate(self, source_file: Path, dest_file: Path) -> bool:
-        """Check if files are duplicates based on size and optionally content."""
-        if not dest_file.exists():
-            return False
-
-        # Quick size check
-        if source_file.stat().st_size != dest_file.stat().st_size:
-            return False
-
-        # For small files, also check content hash
-        if source_file.stat().st_size < 10 * 1024 * 1024:  # 10MB threshold
-            return self._files_have_same_hash(source_file, dest_file)
-
-        return True  # Assume duplicate if same size for large files
-
-    def _files_have_same_hash(self, file1: Path, file2: Path) -> bool:
-        """Compare files using SHA-256 hash."""
-        try:
-            hash1 = hashlib.sha256()
-            hash2 = hashlib.sha256()
-
-            with open(file1, 'rb') as f1, open(file2, 'rb') as f2:
-                while True:
-                    chunk1 = f1.read(8192)
-                    chunk2 = f2.read(8192)
-                    if not chunk1 and not chunk2:
-                        break
-                    hash1.update(chunk1)
-                    hash2.update(chunk2)
-
-            return hash1.hexdigest() == hash2.hexdigest()
-        except Exception:
-            return False
-
     def get_destination_path(self, file_path: Path, creation_date: datetime) -> Path:
         """Generate destination path for a file."""
         year = f"{creation_date.year:04d}"
@@ -342,8 +244,7 @@ class PhotoSorter:
         ext = file_path.suffix.lower()
 
         # Normalize JPG extensions
-        if ext in JPG_EXTENSIONS:
-            ext = ".jpg"
+        ext = self.file_ops.normalize_jpg_extension(ext)
 
         # Create destination directory
         dest_dir = self.dest / year / month
@@ -353,7 +254,7 @@ class PhotoSorter:
         dest_file = dest_dir / f"{timestamp}_{counter:03d}{ext}"
 
         # Handle filename conflicts
-        while dest_file.exists() and not self.is_duplicate(file_path, dest_file):
+        while dest_file.exists() and not self.file_ops.is_duplicate(file_path, dest_file):
             dest_file = dest_dir / f"{timestamp}_{counter:03d}{ext}"
             counter += 1
 
@@ -365,62 +266,25 @@ class PhotoSorter:
             return
 
         self.logger.info(f"Processing {len(metadata_files)} metadata files")
-        self._ensure_metadata_dir()
+        self.file_ops.ensure_directory(self.metadata_dir)
         for file_path in metadata_files:
             try:
                 # Preserve relative path structure in Metadata directory
                 relative_path = file_path.relative_to(self.source)
                 dest_path = self.metadata_dir / relative_path
 
-                if self.move_file_safely(file_path, dest_path):
+                if self.file_ops.move_file_safely(file_path, dest_path):
                     self.stats['metadata'] += 1
                 else:
                     self.stats['errors'] += 1
                     if not self.dry_run:
-                        self._move_to_error_dir(file_path)
+                        self.file_ops.move_to_error_directory(file_path, self.error_dir)
 
             except Exception as e:
                 self.logger.error(f"Error processing metadata file {file_path}: {e}")
                 self.stats['errors'] += 1
                 if not self.dry_run:
-                    self._move_to_error_dir(file_path)
-
-    def move_file_safely(self, source: Path, dest: Path) -> bool:
-        """Move file with validation."""
-        if self.dry_run:
-            return True
-
-        try:
-            # Create destination directory
-            dest.parent.mkdir(parents=True, exist_ok=True)
-
-            # Move the file
-            if self.move_files:
-                shutil.move(str(source), str(dest))
-            else:
-                shutil.copy2(str(source), str(dest))
-
-            # Verify the operation
-            if not dest.exists():
-                raise FileNotFoundError(f"File not found after move: {dest}")
-
-            if self.move_files and source.exists():
-                raise FileExistsError(f"Source file still exists after move: {source}")
-
-            # Apply file permissions if specified
-            self._apply_file_permissions(dest, self.file_mode)
-
-            # Apply file group ownership if specified
-            self._apply_file_group(dest, self.group_gid)
-
-            # Log the successful move
-            self.logger.info(f"{source} -> {dest}")
-
-            return True
-
-        except Exception as e:
-            self.logger.error(f"Failed to move {source} -> {dest}: {e}")
-            return False
+                    self.file_ops.move_to_error_directory(file_path, self.error_dir)
 
     def process_livephoto_pairs(self, livephoto_pairs: Dict[str, Dict]) -> None:
         """Process Live Photo pairs with shared basenames."""
@@ -439,7 +303,7 @@ class PhotoSorter:
                     self.logger.error(f"Error processing {file_path}: {e}")
                     self.stats['errors'] += 1
                     if not self.dry_run:
-                        self._move_to_error_dir(file_path)
+                        self.file_ops.move_to_error_directory(file_path, self.error_dir)
 
                 progress.advance(task)
 
@@ -466,7 +330,7 @@ class PhotoSorter:
             # In COPY mode, use temp directory to avoid polluting source
             if not self.move_files:
                 # Create temp file for conversion
-                temp_fd, temp_path = tempfile.mkstemp(suffix=".mp4", prefix="photosort_")
+                temp_fd, temp_path = tempfile.mkstemp(suffix=".mp4", prefix=f"{PROGRAM}_")
                 os.close(temp_fd)  # Close file descriptor, keep path
                 converted_path = Path(temp_path)
                 temp_converted_file = converted_path
@@ -484,134 +348,59 @@ class PhotoSorter:
             else:
                 self.logger.error(f"Failed to convert video: {file_path}")
                 self.stats['errors'] += 1
-                # Clean up temp file if conversion failed
-                if temp_converted_file and temp_converted_file.exists():
-                    try:
-                        temp_converted_file.unlink()
-                    except Exception:
-                        pass
-                if not self.dry_run:
-                    self._move_to_error_dir(file_path)
+                self.file_ops.cleanup_failed_conversion(file_path, processing_file, temp_converted_file, self.error_dir)
                 return
 
         # Generate destination path based on the processing file
         dest_path = self.get_destination_path(processing_file, creation_date)
 
+        # TODO: Update destination path check for converted video paths so that
+        # converted video "duplicates" are handled correctly, including not processing
+        # video conversions in COPY/DRY-RUN mode.
+
         # Check for duplicates
-        if dest_path.exists() and self.is_duplicate(processing_file, dest_path):
+        if dest_path.exists() and self.file_ops.is_duplicate(processing_file, dest_path):
             self.stats['duplicates'] += 1
             progress.update(task, description=f"Skipping duplicate: {processing_file.name}")
 
             # Clean up files based on mode
-            if not self.dry_run:
-                if self.move_files:
-                    # MOVE mode: delete source files
-                    try:
-                        processing_file.unlink()
-                        if needs_conversion and file_path != processing_file:
-                            # Also remove the original if it still exists
-                            if file_path.exists():
-                                file_path.unlink()
-                        self.logger.debug(f"Deleted duplicate source file: {processing_file}")
-                    except Exception as e:
-                        self.logger.warning(f"Could not delete duplicate source file {processing_file}: {e}")
-                else:
-                    # COPY mode: clean up temp converted file only
-                    if temp_converted_file and temp_converted_file.exists():
-                        try:
-                            temp_converted_file.unlink()
-                            self.logger.debug(f"Cleaned up temp converted file: {temp_converted_file}")
-                        except Exception as e:
-                            self.logger.warning(f"Could not clean up temp file {temp_converted_file}: {e}")
+            self.file_ops.handle_duplicate_cleanup(
+                    processing_file,
+                    file_path,
+                    needs_conversion,
+                    self.move_files,
+                    temp_converted_file
+            )
 
             return
 
         # Move processed file to destination
-        if self.move_file_safely(processing_file, dest_path):
-            self.stats['total_size'] += file_size
-
+        if self.file_ops.move_file_safely(processing_file, dest_path):
             # If we converted a video, handle cleanup based on mode
-            if needs_conversion and not self.dry_run:
-                if self.move_files:
-                    # MOVE mode: archive original to legacy videos directory
-                    self._ensure_legacy_videos_dir()
-                    try:
-                        # Preserve relative path structure in legacy videos directory
-                        relative_path = file_path.relative_to(self.source)
-                        legacy_dest = self.legacy_videos_dir / relative_path
-
-                        # Create parent directories if needed
-                        legacy_dest.parent.mkdir(parents=True, exist_ok=True)
-
-                        # Move original to legacy directory
-                        file_path.rename(legacy_dest)
-                        self.logger.info(f"Archived original video: {file_path} -> {legacy_dest}")
-                    except Exception as e:
-                        self.logger.warning(f"Could not archive original video {file_path}: {e}")
-                else:
-                    # COPY mode: archive original to legacy videos directory and clean up temp file
-                    self._ensure_legacy_videos_dir()
-                    try:
-                        # Preserve relative path structure in legacy videos directory
-                        relative_path = file_path.relative_to(self.source)
-                        legacy_dest = self.legacy_videos_dir / relative_path
-
-                        # Create parent directories if needed
-                        legacy_dest.parent.mkdir(parents=True, exist_ok=True)
-
-                        # Copy original to legacy directory
-                        shutil.copy2(str(file_path), str(legacy_dest))
-                        self.logger.info(f"Archived original video: {file_path} -> {legacy_dest}")
-                    except Exception as e:
-                        self.logger.warning(f"Could not archive original video {file_path}: {e}")
-
-                    # Clean up temp converted file
-                    if temp_converted_file and temp_converted_file.exists():
-                        try:
-                            temp_converted_file.unlink()
-                            self.logger.debug(f"Cleaned up temp converted file: {temp_converted_file}")
-                        except Exception as e:
-                            self.logger.warning(f"Could not clean up temp file {temp_converted_file}: {e}")
+            if needs_conversion:
+                self.file_ops.handle_conversion_cleanup(
+                        needs_conversion,
+                        self.move_files,
+                        file_path,
+                        processing_file,
+                        temp_converted_file,
+                        self.source,
+                        self.legacy_videos_dir
+                )
 
             # Update stats
-            if is_video:
-                self.stats['videos'] += 1
-            else:
-                self.stats['photos'] += 1
+            self.file_ops.update_file_stats(self.stats, is_video, file_size)
 
             progress.update(task, description=f"Processed: {file_path.name}")
         else:
             self.stats['errors'] += 1
-            if not self.dry_run:
-                self._move_to_error_dir(file_path)
-                # Clean up converted file if conversion happened but move failed
-                if needs_conversion and processing_file != file_path and processing_file.exists():
-                    try:
-                        processing_file.unlink()
-                    except Exception:
-                        pass
-                # Also clean up temp file in COPY mode
-                if temp_converted_file and temp_converted_file.exists():
-                    try:
-                        temp_converted_file.unlink()
-                    except Exception:
-                        pass
-
-    def _move_to_error_dir(self, file_path: Path) -> None:
-        """Move problematic file to error directory."""
-        self._ensure_error_dir()
-        try:
-            error_dest = self.error_dir / file_path.name
-            counter = 1
-            while error_dest.exists():
-                stem = file_path.stem
-                suffix = file_path.suffix
-                error_dest = self.error_dir / f"{stem}_{counter:03d}{suffix}"
-                counter += 1
-
-            shutil.copy2(str(file_path), str(error_dest))
-        except Exception as e:
-            self.logger.error(f"Could not move error file: {e}")
+            self.file_ops.cleanup_failed_move(
+                    file_path,
+                    processing_file,
+                    temp_converted_file,
+                    needs_conversion,
+                    self.error_dir
+            )
 
     def print_summary(self) -> None:
         """Print processing summary."""
@@ -635,7 +424,9 @@ class PhotoSorter:
             size_str = f"{size_mb:.1f} MB"
         table.add_row("Total Size", size_str)
 
+        print()
         self.console.print(table)
 
         if self.stats['errors'] > 0:
             self.console.print(f"\n[red]Problematic files moved to: {self.error_dir}[/red]")
+

@@ -12,10 +12,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from rich.progress import Progress, TaskID
 from rich.console import Console
+from rich.progress import Progress, TaskID
 
-from .constants import JPG_EXTENSIONS, MOVIE_EXTENSIONS
+from .constants import JPG_EXTENSIONS, MOVIE_EXTENSIONS, PROGRAM
 
 
 class LivePhotoProcessor:
@@ -23,41 +23,27 @@ class LivePhotoProcessor:
 
     def __init__(self, source: Path, dest: Path, dry_run: bool = False,
                  move_files: bool = True, file_mode: Optional[int] = None,
-                 group_gid: Optional[int] = None, timezone: str = "America/New_York",
-                 convert_videos: bool = True, video_converter=None,
-                 history_manager=None, get_creation_date_func=None,
-                 move_file_safely_func=None, is_duplicate_func=None,
-                 logger: Optional[logging.Logger] = None, stats: Optional[Dict] = None):
+                 group_gid: Optional[int] = None, convert_videos: bool = True,
+                 video_converter=None, history_manager=None, file_ops=None,
+                 stats: Optional[Dict] = None, logger: Optional[logging.Logger] = None):
         self.source = source
         self.dest = dest
         self.dry_run = dry_run
         self.move_files = move_files
         self.file_mode = file_mode
         self.group_gid = group_gid
-        self.timezone = timezone
         self.convert_videos = convert_videos
         self.video_converter = video_converter
         self.history_manager = history_manager
-        self.get_creation_date = get_creation_date_func
-        self.move_file_safely = move_file_safely_func
-        self.is_duplicate = is_duplicate_func
-        self.logger = logger or logging.getLogger("photosort.livephoto")
+        self.file_ops = file_ops
+        self.error_dir = self.history_manager.get_unsorted_dir()
+        self.legacy_dir = self.history_manager.get_legacy_videos_dir()
         self.stats = stats or {}
-
-        # Check for exiftool availability
-        self._exiftool_available = self._is_tool_available("exiftool", "-ver")
-
-    def _is_tool_available(self, cmd: str, vers: str = "-h") -> bool:
-        """Check availability of a command-line tool on this system."""
-        try:
-            subprocess.run([cmd, vers], capture_output=True, check=True)
-            return True
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            return False
+        self.logger = logger if logger else logging.getLogger(PROGRAM)
 
     def detect_livephoto_pairs(self, media_files: List[Path]) -> Tuple[List[Path], Dict[str, Dict]]:
         """Detect LivePhoto pairs by matching Apple ContentIdentifier keys."""
-        if self._exiftool_available:
+        if self.file_ops.check_tool_availability("exiftool", "-ver"):
             try:
                 return self._detect_by_content_identifier(media_files)
             except (subprocess.CalledProcessError, json.JSONDecodeError) as e:
@@ -195,7 +181,7 @@ class LivePhotoProcessor:
             if data['image'] and data['video']:
                 # Valid pair found, use image file's creation date
                 try:
-                    creation_date = self.get_creation_date(data['image'])
+                    creation_date = self.file_ops.image_creation_date(data['image'])
                     shared_basename = self._generate_shared_basename(creation_date, 0)
 
                     livephoto_pairs[basename] = {
@@ -209,10 +195,8 @@ class LivePhotoProcessor:
                     self.logger.debug(f"Live Photo pair detected (basename): {data['image'].name} + {data['video'].name}")
                 except Exception as e:
                     self.logger.debug(f"Failed to get creation date for {data['image']}: {e}")
-                    # Add as individual files
                     non_livephoto_files.extend([data['image'], data['video']])
             else:
-                # Add incomplete pairs as individual files
                 if data['image']:
                     non_livephoto_files.append(data['image'])
                 if data['video']:
@@ -232,7 +216,6 @@ class LivePhotoProcessor:
                         if '.' in date_str:
                             main_part, subsec_part = date_str.split('.')
                             dt = datetime.strptime(main_part, "%Y:%m:%d %H:%M:%S")
-                            # Extract milliseconds (first 3 digits of subseconds)
                             milliseconds = int(subsec_part[:3].ljust(3, '0'))
                             return dt, milliseconds
                         else:
@@ -251,7 +234,6 @@ class LivePhotoProcessor:
     def _generate_shared_basename(self, creation_date: datetime, milliseconds: int) -> str:
         """Generate shared basename for Live Photo pair using milliseconds for counter."""
         timestamp = creation_date.strftime("%Y%m%d_%H%M%S")
-        # Use milliseconds as 3-digit counter (or 0 if no milliseconds)
         counter = milliseconds if milliseconds > 0 else 0
         return f"{timestamp}_{counter:03d}"
 
@@ -293,8 +275,9 @@ class LivePhotoProcessor:
                     self.logger.error(f"Error processing Live Photo pair {pair_id}: {e}")
                     self.stats['errors'] += 2
                     if not self.dry_run:
-                        self._move_to_error_dir(pair_data['image_file'])
-                        self._move_to_error_dir(pair_data['video_file'])
+                        error_dir = self.history_manager.get_unsorted_dir()
+                        self.file_ops.move_to_error_directory(pair_data['image_file'], error_dir)
+                        self.file_ops.move_to_error_directory(pair_data['video_file'], error_dir)
                     progress.advance(task, 2)
 
     def _process_livephoto_file(self, file_path: Path, shared_basename: str,
@@ -336,14 +319,8 @@ class LivePhotoProcessor:
                 else:
                     self.logger.error(f"Failed to convert Live Photo video: {file_path}")
                     self.stats['errors'] += 1
-                    # Clean up temp file if conversion failed
-                    if temp_converted_file and temp_converted_file.exists():
-                        try:
-                            temp_converted_file.unlink()
-                        except Exception:
-                            pass
-                    if not self.dry_run:
-                        self._move_to_error_dir(file_path)
+                    error_dir = self.history_manager.get_unsorted_dir()
+                    self.file_ops.cleanup_failed_conversion(file_path, processing_file, temp_converted_file, error_dir)
                     progress.advance(task)
                     return False
 
@@ -352,106 +329,60 @@ class LivePhotoProcessor:
             month = f"{creation_date.month:02d}"
             dest_dir = self.dest / year / month
             ext = processing_file.suffix.lower()
-
-            # Normalize JPG extensions
-            if ext in JPG_EXTENSIONS:
-                ext = ".jpg"
-
+            ext = self.file_ops.normalize_jpg_extension(ext)
             dest_path = dest_dir / f"{shared_basename}{ext}"
 
-            # Check for duplicates using the external function
-            if dest_path.exists() and self.is_duplicate(processing_file, dest_path):
+            # Check for duplicates if the destination file already exists
+            if dest_path.exists() and self.file_ops.is_duplicate(processing_file, dest_path):
                 self.stats['duplicates'] += 1
                 progress.update(task, description=f"Skipping duplicate Live Photo: {processing_file.name}")
 
                 # Clean up files based on mode
-                if not self.dry_run:
-                    if self.move_files:
-                        # MOVE mode: delete source files
-                        try:
-                            processing_file.unlink()
-                            if needs_conversion and file_path != processing_file and file_path.exists():
-                                file_path.unlink()
-                            self.logger.debug(f"Deleted duplicate Live Photo file: {processing_file}")
-                        except Exception as e:
-                            self.logger.warning(f"Could not delete duplicate Live Photo file {processing_file}: {e}")
-                    else:
-                        # COPY mode: clean up temp converted file only
-                        if temp_converted_file and temp_converted_file.exists():
-                            try:
-                                temp_converted_file.unlink()
-                                self.logger.debug(f"Cleaned up temp Live Photo converted file: {temp_converted_file}")
-                            except Exception as e:
-                                self.logger.warning(f"Could not clean up temp Live Photo file {temp_converted_file}: {e}")
+                self.file_ops.handle_duplicate_cleanup(
+                        processing_file,
+                        file_path,
+                        needs_conversion,
+                        self.move_files,
+                        temp_converted_file
+                )
 
                 progress.advance(task)
                 return True
 
             # Move processed file to destination
-            if self.move_file_safely(processing_file, dest_path):
-                self.stats['total_size'] += file_size
+            if self.file_ops.move_file_safely(processing_file, dest_path):
+                # If we converted a video, handle cleanup based on mode
+                if needs_conversion:
+                    self.file_ops.handle_conversion_cleanup(
+                            needs_conversion,
+                            self.move_files,
+                            file_path,
+                            processing_file,
+                            temp_converted_file,
+                            self.source,
+                            self.legacy_videos_dir
+                    )
 
-                # Archive original video if converted and clean up based on mode
-                if needs_conversion and not self.dry_run:
-                    self._ensure_legacy_videos_dir()
-                    try:
-                        relative_path = file_path.relative_to(self.source)
-                        legacy_dest = self.history_manager.get_legacy_videos_dir() / relative_path
-                        legacy_dest.parent.mkdir(parents=True, exist_ok=True)
-
-                        if self.move_files:
-                            # MOVE mode: move original to legacy directory
-                            file_path.rename(legacy_dest)
-                        else:
-                            # COPY mode: copy original to legacy directory
-                            shutil.copy2(str(file_path), str(legacy_dest))
-
-                        self.logger.info(f"Archived original Live Photo video: {file_path} -> {legacy_dest}")
-                    except Exception as e:
-                        self.logger.warning(f"Could not archive original Live Photo video {file_path}: {e}")
-
-                    # Clean up temp converted file in COPY mode
-                    if not self.move_files and temp_converted_file and temp_converted_file.exists():
-                        try:
-                            temp_converted_file.unlink()
-                            self.logger.debug(f"Cleaned up temp Live Photo converted file: {temp_converted_file}")
-                        except Exception as e:
-                            self.logger.warning(f"Could not clean up temp Live Photo file {temp_converted_file}: {e}")
-
-                # Update stats
-                if is_video:
-                    self.stats['videos'] += 1
-                else:
-                    self.stats['photos'] += 1
-
+                self.file_ops.update_file_stats(self.stats, is_video, file_size)
                 progress.update(task, description=f"Processed Live Photo: {file_path.name}")
                 progress.advance(task)
                 return True
             else:
                 self.stats['errors'] += 1
-                if not self.dry_run:
-                    self._move_to_error_dir(file_path)
-                    # Clean up converted file if conversion happened but move failed
-                    if needs_conversion and processing_file != file_path and processing_file.exists():
-                        try:
-                            processing_file.unlink()
-                        except Exception:
-                            pass
-                    # Also clean up temp file in COPY mode
-                    if temp_converted_file and temp_converted_file.exists():
-                        try:
-                            temp_converted_file.unlink()
-                        except Exception:
-                            pass
+                self.file_ops.cleanup_failed_move(
+                        file_path,
+                        processing_file,
+                        temp_converted_file,
+                        needs_conversion,
+                        self.error_dir
+                )
                 progress.advance(task)
                 return False
 
         except Exception as e:
             self.logger.error(f"Error processing Live Photo file {file_path}: {e}")
             self.stats['errors'] += 1
-            if not self.dry_run:
-                self._move_to_error_dir(file_path)
-            # Clean up temp file if it exists
+            self.file_ops.move_to_error_directory(file_path, self.error_dir)
             if temp_converted_file and temp_converted_file.exists():
                 try:
                     temp_converted_file.unlink()
@@ -460,28 +391,3 @@ class LivePhotoProcessor:
             progress.advance(task)
             return False
 
-    def _ensure_legacy_videos_dir(self) -> None:
-        """Create legacy videos directory if needed and not in dry-run mode."""
-        if not self.dry_run:
-            legacy_dir = self.history_manager.get_legacy_videos_dir()
-            if not legacy_dir.exists():
-                legacy_dir.mkdir(exist_ok=True)
-
-    def _move_to_error_dir(self, file_path: Path) -> None:
-        """Move problematic file to error directory."""
-        error_dir = self.history_manager.get_unsorted_dir()
-        if not self.dry_run and not error_dir.exists():
-            error_dir.mkdir(exist_ok=True)
-
-        try:
-            error_dest = error_dir / file_path.name
-            counter = 1
-            while error_dest.exists():
-                stem = file_path.stem
-                suffix = file_path.suffix
-                error_dest = error_dir / f"{stem}_{counter:03d}{suffix}"
-                counter += 1
-
-            shutil.copy2(str(file_path), str(error_dest))
-        except Exception as e:
-            self.logger.error(f"Could not move error file: {e}")

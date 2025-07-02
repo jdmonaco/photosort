@@ -2,9 +2,9 @@
 Video conversion functionality using ffmpeg.
 """
 
-import os
 import json
 import logging
+import os
 import subprocess
 import tempfile
 from pathlib import Path
@@ -13,56 +13,48 @@ from typing import Dict, Optional, Tuple
 from rich.progress import Progress, TaskID
 
 from .constants import MODERN_VIDEO_CODECS
+from .file_operations import FileOperations
 
 
 class VideoConverter:
     """Handles video format conversion using ffmpeg."""
 
-    def __init__(self, dry_run: bool = False):
+    def __init__(self, file_ops: FileOperations, dry_run: bool = False):
         self.dry_run = dry_run
         self.logger = logging.getLogger("photosort.conversion")
-        self._ffmpeg_available = self._check_ffmpeg_available()
-        if not self._ffmpeg_available:
+        self.file_ops = file_ops
+        self.ffmpeg_available = file_ops.check_tool_availability("ffmpeg", "-version")
+        self.ffprobe_available = file_ops.check_tool_availability("ffprobe", "-version")
+        if not self.ffmpeg_available:
             self.logger.warning("ffmpeg unavailable: skipping legacy video conversion")
-
-    def _check_ffmpeg_available(self) -> bool:
-        """Check if ffmpeg and ffprobe are available."""
-        try:
-            subprocess.run(["ffmpeg", "-version"], capture_output=True, check=True)
-            subprocess.run(["ffprobe", "-version"], capture_output=True, check=True)
-            return True
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            return False
 
     def get_video_codec(self, video_path: Path) -> Optional[str]:
         """Extract video codec information using ffprobe."""
-        try:
-            result = subprocess.run(
-                [
-                    "ffprobe",
-                    "-v", "quiet",
-                    "-print_format", "json",
-                    "-show_streams",
-                    "-select_streams", "v:0",
-                    str(video_path),
-                ],
-                capture_output=True, text=True, check=True,
-            )
+        if self.ffprobe_available:
+            try:
+                result = subprocess.run(
+                    [
+                        "ffprobe",
+                        "-v", "quiet",
+                        "-print_format", "json",
+                        "-show_streams",
+                        "-select_streams", "v:0",
+                        str(video_path),
+                    ],
+                    capture_output=True, text=True, check=True,
+                )
 
-            data = json.loads(result.stdout)
-            if data.get("streams"):
-                codec = data["streams"][0].get("codec_name", "").lower()
-                return codec
-        except (subprocess.CalledProcessError, json.JSONDecodeError, KeyError):
-            self.logger.warning(f"Could not determine codec for {video_path}")
+                data = json.loads(result.stdout)
+                if data.get("streams"):
+                    codec = data["streams"][0].get("codec_name", "").lower()
+                    return codec
+            except (subprocess.CalledProcessError, json.JSONDecodeError, KeyError):
+                self.logger.warning(f"Could not determine codec for {video_path}")
 
         return None
 
     def needs_conversion(self, video_path: Path) -> bool:
         """Check if video needs conversion to modern format."""
-        if not self._ffmpeg_available:
-            return False
-
         codec = self.get_video_codec(video_path)
         if codec is None:
             return False
@@ -72,16 +64,16 @@ class VideoConverter:
     def convert_video(self, input_path: Path, output_path: Path,
                       progress: Optional[Progress] = None,
                       task: Optional[TaskID] = None) -> bool:
-        """Convert video to H.265/MP4 format."""
+        """Convert video to HEVC/H.265 format in a MP4 container."""
         if self.dry_run:
             self.logger.info(f"DRY RUN: Would convert {input_path} -> {output_path}")
             return True
 
-        if not self._ffmpeg_available:
+        if not self.ffmpeg_available:
             return False
 
         # Create output directory
-        output_path.parent.mkdir(parents=True, exist_ok=True)
+        self.file_ops.ensure_directory(output_path.parent)
 
         # Save file stat to restore on the output path
         original_stat = input_path.stat()
@@ -134,16 +126,13 @@ class VideoConverter:
             self.logger.error(f"Conversion error for {input_path}: {e}")
             return False
         finally:
-            # Clean up temp file if it still exists
             if temp_path.exists():
                 try:
                     temp_path.unlink()
                 except Exception:
                     pass
 
-    def get_conversion_info(
-        self, input_path: Path, output_path: Path
-    ) -> Dict[str, str]:
+    def get_conversion_info(self, input_path: Path, output_path: Path) -> Dict[str, str]:
         """Get information about the conversion that will be performed."""
         original_codec = self.get_video_codec(input_path) or "unknown"
         original_size = input_path.stat().st_size
@@ -163,3 +152,4 @@ class VideoConverter:
             )
 
         return info
+

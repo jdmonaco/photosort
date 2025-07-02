@@ -2,6 +2,9 @@
 File extension constants and settings for photo organization.
 """
 
+# Program metadata
+PROGRAM = "photosort"
+
 # File extension constants
 JPG_EXTENSIONS = (".jpg", ".jpeg", ".jpe")
 RAW_EXTENSIONS = (
@@ -25,9 +28,6 @@ MOVIE_EXTENSIONS = (
     ".scm", ".smil", ".snagproj", ".sqz", ".stx", ".swi", ".tix", ".trp",
     ".ts", ".veg", ".vf", ".vro", ".webm", ".wlmp", ".wtv", ".xvid", ".yuv",
 )
-MODERN_VIDEO_CODECS = (
-    "h264", "avc", "h.264", "h265", "hevc", "h.265", "av1", "av01"
-)
 METADATA_EXTENSIONS = (
     ".aae", ".dat", ".ini", ".cfg", ".xml", ".plist", ".json", ".txt", ".log",
     ".info", ".meta", ".properties", ".conf", ".config", ".xmp"
@@ -36,3 +36,12 @@ NUISANCE_EXTENSIONS = (
     ".ds_store", ".thumbs.db", ".desktop.ini", "thumbs.db"
 )
 VALID_EXTENSIONS = PHOTO_EXTENSIONS + MOVIE_EXTENSIONS
+
+# Video codecs
+MODERN_VIDEO_CODECS = (
+    "hevc", "h265", "av1", "vp9"
+)
+LEGACY_VIDEO_CODECS = (
+    "avc", "h264"
+)
+

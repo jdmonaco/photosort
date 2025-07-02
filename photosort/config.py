@@ -9,17 +9,19 @@ from typing import Dict, Optional
 
 import yaml
 
+from .constants import PROGRAM
+
 
 class Config:
     """Manages configuration file for storing user preferences."""
 
     def __init__(self, config_path: Optional[Path] = None):
-        # Default config location: ~/.photosort/config.yml
+        # Default config location: ~/.<PROGRAM>/config.yml
         if config_path:
-            self.config_path = config_path
+            self.config_path = Path(config_path)
         else:
-            self.config_path = Path.home() / ".photosort" / "config.yml"
-
+            self.config_path = Path.home() / f".{PROGRAM}" / "config.yml"
+        self.program_root = self.config_path.parent
         self.data = self._load_config()
 
     def _load_config(self) -> Dict:
@@ -31,18 +33,18 @@ class Config:
             with open(self.config_path, 'r') as f:
                 return yaml.safe_load(f) or {}
         except Exception as e:
-            logger = logging.getLogger("photosort")
+            logger = logging.getLogger(PROGRAM)
             logger.warning(f"Could not load config: {e}")
             return {}
 
     def save_config(self) -> None:
         """Save current configuration to file."""
-        self.config_path.parent.mkdir(parents=True, exist_ok=True)
+        self.program_root.mkdir(exist_ok=True)
         try:
             with open(self.config_path, 'w') as f:
                 yaml.safe_dump(self.data, f, default_flow_style=False)
         except Exception as e:
-            logger = logging.getLogger("photosort")
+            logger = logging.getLogger(PROGRAM)
             logger.error(f"Could not save config: {e}")
 
     def get_last_source(self) -> Optional[str]:
@@ -85,12 +87,8 @@ class Config:
         self.data['group'] = group
         self.save_config()
 
-    def update_convert_videos(self, convert_videos: bool) -> None:
-        """Update and save the video conversion setting."""
-        self.data['convert_videos'] = convert_videos
-        self.save_config()
-
     def update_timezone(self, timezone: str) -> None:
         """Update and save the timezone setting."""
         self.data['timezone'] = timezone
         self.save_config()
+

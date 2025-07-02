@@ -16,12 +16,12 @@ photosort/
 ├── __init__.py          # Package init with public API
 ├── cli.py              # Command-line interface and main entry point
 ├── config.py           # Configuration management (Config class)
-├── constants.py        # File extension constants and settings
+├── constants.py        # File extension constants, program metadata, and settings
 ├── conversion.py       # Video format conversion using ffmpeg (VideoConverter class)
 ├── core.py             # Core photo sorting logic (PhotoSorter class)
+├── file_operations.py  # Shared file operations and utilities (FileOperations class)
 ├── history.py          # Import history management (HistoryManager class)
 ├── livephoto.py        # Live Photo processing (LivePhotoProcessor class)
-├── permissions.py      # File permissions and group ownership utilities
 └── utils.py            # General utility functions
 ```
 
@@ -30,10 +30,10 @@ photosort/
 - **`photosort.core.PhotoSorter`**: Handles the multi-phase processing workflow
 - **`photosort.config.Config`**: Manages YAML configuration and remembers user preferences
 - **`photosort.conversion.VideoConverter`**: Automatic video format conversion to H.265/MP4
+- **`photosort.file_operations.FileOperations`**: Shared utilities for file operations, duplicate detection, and permissions
 - **`photosort.history.HistoryManager`**: Manages import history, logging, and auxiliary file placement
 - **`photosort.livephoto.LivePhotoProcessor`**: Specialized Live Photo detection and processing
-- **`photosort.constants`**: File extension definitions and configuration constants
-- **`photosort.permissions`**: File mode and group ownership utilities
+- **`photosort.constants`**: File extension definitions, program metadata, and configuration constants
 - **`photosort.utils`**: Source directory cleanup and general utilities
 - **Rich UI**: Progress bars, tables, and colored console output
 
@@ -116,7 +116,6 @@ Output structure: `YYYY/MM/YYYY-MM-DD_HH-MM-SS.ext`
 - `PhotoSorter.get_creation_date()`: Timezone-aware date extraction for photos and videos
 - `PhotoSorter._get_video_creation_date()`: JSON-based ffprobe parsing with EST/EDT conversion
 - `PhotoSorter._parse_iso8601_to_est()`: ISO 8601 timestamp parsing with timezone conversion
-- `PhotoSorter.is_duplicate()`: Advanced duplicate detection with size/hash comparison
 - `PhotoSorter.get_destination_path()`: Generates timestamped destination paths
 
 ### File Discovery (`photosort.core`)
@@ -141,11 +140,21 @@ Output structure: `YYYY/MM/YYYY-MM-DD_HH-MM-SS.ext`
 - `HistoryManager.get_legacy_videos_dir()`: Path for original videos before conversion
 - `HistoryManager.get_unsorted_dir()`: Path for problematic files
 
-### File Permissions (`photosort.permissions`)
-- `parse_file_mode()`: Validates and converts octal mode strings
-- `parse_group()`: Validates group names against system groups
-- `set_directory_groups()`: Applies group ownership to destination directories
-- `get_system_default_mode()`: Gets system default file mode from umask
+### File Operations (`photosort.file_operations`)
+- `FileOperations.is_duplicate()`: Advanced duplicate detection with size/hash comparison
+- `FileOperations.same_size_same_hash()`: SHA-256 hash comparison for same-sized files
+- `FileOperations.move_file_safely()`: File movement with validation and permission setting
+- `FileOperations.image_creation_date()`: Image metadata extraction using sips with fallback
+- `FileOperations.apply_file_permissions()`: Sets file permissions based on mode
+- `FileOperations.apply_file_group()`: Sets group ownership based on GID
+- `FileOperations.ensure_directory()`: Creates directories safely with dry-run support
+- `FileOperations.handle_conversion_cleanup()`: Manages cleanup after video conversion
+- `FileOperations.handle_duplicate_cleanup()`: Manages cleanup when duplicates detected
+- `FileOperations.cleanup_failed_conversion()`: Cleanup when conversion fails
+- `FileOperations.cleanup_failed_move()`: Cleanup when file move fails
+- `FileOperations.cleanup_source_directory()`: Post-processing source cleanup
+- `FileOperations.normalize_jpg_extension()`: Standardizes JPG file extensions
+- `FileOperations.check_tool_availability()`: System tool availability checking
 
 ### Video Conversion (`photosort.conversion`)
 - `VideoConverter.needs_conversion()`: Detects non-modern codec videos requiring conversion
@@ -172,6 +181,7 @@ Output structure: `YYYY/MM/YYYY-MM-DD_HH-MM-SS.ext`
 - Moves unknown files to history directory
 
 ### Constants (`photosort.constants`)
+- `PROGRAM`: Centralized program name constant for consistent naming
 - `PHOTO_EXTENSIONS`: Supported photo file extensions (includes GIF, TIFF formats)
 - `MOVIE_EXTENSIONS`: Supported video file extensions
 - `MODERN_VIDEO_CODECS`: Video codecs that don't need conversion (h264, h265, av1)
@@ -195,7 +205,7 @@ The Live Photo system detects and processes Apple Live Photo pairs (image + vide
 ### Architecture
 - **Dedicated Module**: Live Photo functionality extracted into `photosort.livephoto` module
 - **Processor Integration**: PhotoSorter creates and delegates to LivePhotoProcessor instance
-- **Shared Infrastructure**: LivePhotoProcessor uses PhotoSorter's video conversion, file operations, and history management
+- **Shared Infrastructure**: LivePhotoProcessor uses PhotoSorter's video conversion, FileOperations utilities, and history management
 - **Dependency Injection**: All required functions and objects passed to LivePhotoProcessor during initialization
 
 ### Detection Methods
@@ -280,6 +290,7 @@ The package exports these key classes and functions:
 - `photosort.Config`: Configuration management class
 - `photosort.VideoConverter`: Video format conversion class
 - `photosort.PhotoSorter`: Core photo sorting class
+- `photosort.FileOperations`: Shared file operations and utilities class
 - `photosort.HistoryManager`: Import history management class
 - `photosort.LivePhotoProcessor`: Live Photo detection and processing class
 
@@ -294,6 +305,7 @@ config = Config()
 sorter = PhotoSorter(
     source=Path("~/Downloads/Photos"), 
     dest=Path("~/Pictures/Organized"),
+    root_dir=config.program_root,
     dry_run=True
 )
 media_files, metadata_files, livephoto_pairs = sorter.find_source_files()
@@ -304,14 +316,14 @@ sorter.process_files(media_files)
 ## Development Notes
 
 ### Module Dependencies
-- `cli.py` → `config.py`, `core.py`, `permissions.py`, `utils.py`
-- `core.py` → `constants.py`, `history.py`, `livephoto.py`, `conversion.py`
-- `livephoto.py` → `constants.py` (standalone with dependency injection from core.py)
-- `utils.py` → `constants.py`, `history.py`
-- `conversion.py` → standalone (only system modules)
-- `permissions.py` → standalone (only system modules)
-- `config.py` → standalone (only system modules + yaml)
-- `history.py` → standalone (only system modules)
+- `cli.py` → `config.py`, `core.py`, `constants.py`
+- `core.py` → `constants.py`, `config.py`, `file_operations.py`, `history.py`, `livephoto.py`, `conversion.py`
+- `file_operations.py` → `constants.py` (central utility used by multiple modules)
+- `livephoto.py` → `constants.py` (with dependency injection from core.py)
+- `history.py` → `file_operations.py` (uses FileOperations for directory creation)
+- `conversion.py` → `constants.py`, `file_operations.py`
+- `config.py` → `constants.py` (only system modules + yaml)
+- `utils.py` → `constants.py`, `file_operations.py`
 - `constants.py` → standalone (no dependencies)
 
 ### Testing Strategy
@@ -323,5 +335,6 @@ sorter.process_files(media_files)
 - **New file formats**: Add to `constants.py` extension lists
 - **Custom processors**: Subclass `PhotoSorter` or `LivePhotoProcessor` for specialized behavior
 - **Alternative storage**: Implement custom `HistoryManager` subclasses
+- **File operations**: Extend `FileOperations` for custom file handling behaviors
 - **Live Photo enhancements**: Modify `LivePhotoProcessor` for new detection methods or processing logic
 - **Plugin system**: Future enhancement for custom processing pipelines
