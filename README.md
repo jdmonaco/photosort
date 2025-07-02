@@ -102,6 +102,25 @@ Photosort remembers your preferences in `~/.photosort/config.yml`. The help mess
 photosort --help
 ```
 
+### Bash Completion
+
+Enable tab completion for all options, directories, and common values:
+
+```bash
+# Install completion (saves to ~/.photosort/ and adds source line to ~/.bashrc)
+photosort --install-completion
+
+# Restart terminal or source bashrc
+source ~/.bashrc
+
+# Now tab completion works:
+photosort --mo<TAB>     # completes to --mode
+photosort --mode 6<TAB> # shows 644, 664, 600, etc.
+photosort ~/P<TAB>      # completes directory paths
+```
+
+The completion script is saved to `~/.photosort/completion.bash` and sourced from `~/.bashrc`. You can also manually install using `scripts/install-completion.sh`.
+
 ### Options
 
 #### File Management
@@ -111,6 +130,7 @@ photosort --help
 - `--copy`, `-c`: Copy files instead of moving them (default is to move)
 - `--verbose`, `-v`: Enable detailed logging
 - `--version`, `-V`: Display version number and exit (use with `--verbose` for detailed info)
+- `--install-completion`: Install bash completion script to ~/.bashrc
 
 #### File Ownership
 - `--mode`, `-m`: File permissions in octal format (e.g., 644, 664, 400)

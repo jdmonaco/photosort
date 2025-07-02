@@ -48,6 +48,147 @@ def set_directory_groups(dest_path: Path, group_name: str, console: Console) -> 
         console.print(f"[yellow]Warning: Could not set group on directories: {e}[/yellow]")
 
 
+def install_bash_completion() -> int:
+    """Install bash completion script to user's environment."""
+    console = Console()
+    
+    # Get the completion script content
+    completion_script = """#!/usr/bin/env bash
+# Bash completion script for photosort
+
+_photosort_completion() {
+    local cur prev opts
+    COMPREPLY=()
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+
+    # All available options
+    opts="--source -s --dest -d --dry-run -n --copy -c --verbose -v 
+          --mode -m --group -g --timezone --tz --no-convert-videos 
+          --version -V --help -h --install-completion"
+
+    # Handle completion based on previous argument
+    case "${prev}" in
+        # Directory completion for source and dest options
+        --source|-s|--dest|-d)
+            COMPREPLY=($(compgen -d -- "${cur}"))
+            return 0
+            ;;
+        
+        # File mode completion (common octal modes)
+        --mode|-m)
+            local modes="644 664 600 755 744 640 660"
+            COMPREPLY=($(compgen -W "${modes}" -- "${cur}"))
+            return 0
+            ;;
+        
+        # Group completion (system groups)
+        --group|-g)
+            if command -v getent >/dev/null 2>&1; then
+                local groups=$(getent group | cut -d: -f1)
+                COMPREPLY=($(compgen -W "${groups}" -- "${cur}"))
+            else
+                # Fallback for macOS and systems without getent
+                local common_groups="staff wheel users admin dialout cdrom floppy audio dip video plugdev netdev lpadmin scanner"
+                COMPREPLY=($(compgen -W "${common_groups}" -- "${cur}"))
+            fi
+            return 0
+            ;;
+        
+        # Timezone completion (common timezones)
+        --timezone|--tz)
+            local timezones="America/New_York America/Los_Angeles America/Chicago 
+                           America/Denver America/Phoenix America/Anchorage 
+                           America/Honolulu America/Toronto America/Vancouver
+                           Europe/London Europe/Berlin Europe/Paris Europe/Rome
+                           Europe/Madrid Europe/Stockholm Europe/Zurich
+                           Asia/Tokyo Asia/Shanghai Asia/Kolkata Asia/Dubai
+                           Australia/Sydney Australia/Melbourne Australia/Perth
+                           Pacific/Auckland UTC"
+            COMPREPLY=($(compgen -W "${timezones}" -- "${cur}"))
+            return 0
+            ;;
+    esac
+
+    # Positional argument completion
+    case "${COMP_CWORD}" in
+        1)
+            # First positional arg: source directory
+            COMPREPLY=($(compgen -d -- "${cur}"))
+            # Also include options if user starts typing --
+            if [[ "${cur}" == -* ]]; then
+                COMPREPLY+=($(compgen -W "${opts}" -- "${cur}"))
+            fi
+            return 0
+            ;;
+        2)
+            # Second positional arg: dest directory (only if first arg wasn't an option)
+            if [[ "${COMP_WORDS[1]}" != -* ]]; then
+                COMPREPLY=($(compgen -d -- "${cur}"))
+                return 0
+            fi
+            # Otherwise fall through to option completion
+            ;;
+    esac
+
+    # Default: complete with available options
+    if [[ "${cur}" == -* ]]; then
+        COMPREPLY=($(compgen -W "${opts}" -- "${cur}"))
+        return 0
+    fi
+
+    # If no options matched, try directory completion
+    COMPREPLY=($(compgen -d -- "${cur}"))
+}
+
+# Register the completion function
+complete -F _photosort_completion photosort
+"""
+
+    try:
+        # Set up paths
+        from .config import Config
+        config = Config()
+        completion_path = config.program_root / "completion.bash"
+        bashrc_path = Path.home() / ".bashrc"
+        marker_start = "# >>> photosort completion >>>"
+        marker_end = "# <<< photosort completion <<<"
+        
+        # Check if completion is already installed
+        if bashrc_path.exists():
+            content = bashrc_path.read_text()
+            if marker_start in content:
+                console.print("[yellow]Photosort completion already installed in ~/.bashrc[/yellow]")
+                return 0
+        
+        # Ensure photosort config directory exists
+        config.program_root.mkdir(exist_ok=True)
+        
+        # Write completion script to ~/.photosort/completion.bash
+        with open(completion_path, "w") as f:
+            f.write(completion_script)
+        
+        # Add source line to .bashrc
+        completion_block = f"""
+{marker_start}
+[ -r {completion_path} ] && source {completion_path}
+{marker_end}
+"""
+        
+        with open(bashrc_path, "a") as f:
+            f.write(completion_block)
+        
+        console.print(f"[green]✓ Completion script saved to {completion_path}[/green]")
+        console.print("[green]✓ Bash completion installed to ~/.bashrc[/green]")
+        console.print("Run 'source ~/.bashrc' or restart your terminal to enable completion")
+        return 0
+        
+    except Exception as e:
+        console.print(f"[red]Failed to install completion: {e}[/red]")
+        console.print("You can manually add the completion script from the 'completion/' directory")
+        return 1
+
+
 def create_parser(config: Config) -> argparse.ArgumentParser:
     """Create argument parser with dynamic defaults from config."""
     last_source = config.get_last_source()
@@ -142,6 +283,10 @@ Examples:
         "--version", "-V", action="store_true",
         help=version_help
     )
+    parser.add_argument(
+        "--install-completion", action="store_true",
+        help="Install bash completion script to ~/.bashrc"
+    )
 
     return parser
 
@@ -162,6 +307,10 @@ def main() -> int:
             return 0
         print(__version__)
         return 0
+
+    # Handle completion installation
+    if args.install_completion:
+        return install_bash_completion()
 
     # Determine source and destination
     source_path = (args.source_override or args.source or

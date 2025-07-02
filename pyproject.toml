@@ -37,6 +37,13 @@ classifiers = [
 [project.scripts]
 photosort = "photosort.cli:main"
 
+# Include completion and scripts in package data
+[tool.hatch.build]
+include = [
+    "completion/*",
+    "scripts/*",
+]
+
 [project.urls]
 Repository = "https://github.com/your-username/photosort"
 
