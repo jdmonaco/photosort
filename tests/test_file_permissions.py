@@ -333,8 +333,8 @@ class TestFilePermissions:
             dir_mode = oct(stat.S_IMODE(year_dir.stat().st_mode))
             
             # Directory should have execute permissions for navigation
-            # Common directory modes: 755, 750, 700, etc.
-            assert dir_mode in ["0o755", "0o750", "0o700", "0o711"], \
+            # Common directory modes: 755, 750, 700, 775, etc. (varies by umask)
+            assert dir_mode in ["0o755", "0o750", "0o700", "0o711", "0o775", "0o770"], \
                 f"Directory should have appropriate mode, got {dir_mode}"
     
     def test_permissions_on_converted_videos(self, cli_runner, test_config_path, create_test_files):

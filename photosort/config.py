@@ -30,7 +30,13 @@ class Config:
 
         try:
             with open(self.config_path, 'r') as f:
-                return yaml.safe_load(f) or {}
+                data = yaml.safe_load(f) or {}
+                # Ensure we got a dictionary, not a string or other type
+                if not isinstance(data, dict):
+                    logger = get_logger()
+                    logger.warning(f"Config file contains invalid data type: {type(data)}")
+                    return {}
+                return data
         except Exception as e:
             logger = get_logger()
             logger.warning(f"Could not load config: {e}")
@@ -38,7 +44,7 @@ class Config:
 
     def save_config(self) -> None:
         """Save current configuration to file."""
-        self.program_root.mkdir(exist_ok=True)
+        self.program_root.mkdir(parents=True, exist_ok=True)
         try:
             with open(self.config_path, 'w') as f:
                 yaml.safe_dump(self.data, f, default_flow_style=False)

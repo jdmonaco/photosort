@@ -221,9 +221,47 @@ uv sync
 # Run tests
 uv run pytest
 
+# Run specific test module
+uv run pytest tests/test_basic_operations.py -v
+
 # Format code
 uv run black .
 
 # Type checking
 uv run mypy photosort/
 ```
+
+### Testing with Your Own Media
+
+The test suite uses real media files to test Live Photo detection and EXIF metadata handling. To set up testing with your own media:
+
+```bash
+# Create test media directory from your photo collection
+uv run python tests/create_test_media.py
+
+# Follow the prompts to specify:
+# - Source directory containing your media files
+# - Types of files to include (photos, videos, Live Photos, metadata)
+# - Size limits for test media
+
+# The script will create example_media/ with curated test files
+```
+
+The `create_test_media.py` script will:
+- Scan your media collection for diverse file types
+- Copy representative files to `example_media/` directory
+- Organize files by type (photos, videos, livephotos, metadata)
+- Keep total size manageable (under 100MB by default)
+- Preserve real EXIF metadata for authentic testing
+
+This ensures tests run with real-world file characteristics while keeping the test suite fast and manageable.
+
+### Test Coverage
+
+The test suite includes 58 tests across 6 modules:
+- **Basic Operations**: Move/copy modes, validation, argument handling
+- **Configuration**: Settings persistence, defaults, validation
+- **File Organization**: Date structure, naming, duplicates, cleanup
+- **Live Photo Processing**: Pair detection, shared basenames, metadata
+- **Video Conversion**: H.265 encoding, archival, format detection
+- **File Permissions**: Mode setting, group ownership, directory permissions

@@ -325,7 +325,7 @@ class LivePhotoProcessor:
                 # If we converted a video, handle cleanup based on mode
                 if conversion.was_converted:
                     conversion.handle_conversion_cleanup(
-                        self.file_ops, self.source, self.legacy_videos_dir
+                        self.file_ops, self.source, self.legacy_dir
                     )
 
                 self.stats_manager.record_successful_file(file_path, file_size)

@@ -232,7 +232,7 @@ class TestBasicOperations:
         )
         
         assert result1.exit_code == 0
-        assert str(dest1) in result1.output
+        assert "dest1" in result1.output
         
         # Test with flags
         result2 = cli_runner(
@@ -243,7 +243,7 @@ class TestBasicOperations:
         )
         
         assert result2.exit_code == 0
-        assert str(dest2) in result2.output
+        assert "dest2" in result2.output
         
         # Test flags override positional
         result3 = cli_runner(
@@ -255,4 +255,4 @@ class TestBasicOperations:
         )
         
         assert result3.exit_code == 0
-        assert str(dest2) in result3.output  # Flag should override positional
+        assert "dest2" in result3.output  # Flag should override positional

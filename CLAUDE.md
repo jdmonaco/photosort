@@ -81,8 +81,11 @@ uv run photosort --help
 # Install as tool
 uv tool install .
 
-# Run tests (when added)
+# Run tests
 uv run pytest
+
+# Run specific test module
+uv run pytest tests/test_basic_operations.py -v
 
 # Code formatting
 uv run black photosort/
@@ -179,8 +182,6 @@ Output structure: `YYYY/MM/YYYY-MM-DD_HH-MM-SS.ext`
 - `Config.update_paths()`: Saves new source/destination paths
 - `Config.update_file_mode()`: Saves file permission preferences
 - `Config.update_group()`: Saves group ownership preferences
-- `Config.get_convert_videos()`: Retrieves video conversion setting
-- `Config.update_convert_videos()`: Saves video conversion preference
 - `Config.get_timezone()`: Retrieves saved timezone setting
 - `Config.update_timezone()`: Saves timezone preference
 
@@ -301,7 +302,7 @@ Video conversion uses a unified tempfile approach for both COPY and MOVE modes t
 - `--group, -g`: Group ownership (e.g., staff, wheel) - saves as new default
 
 ### Video Conversion
-- `--no-convert-videos`: Disable automatic conversion of legacy video formats to H.265/MP4
+- `--no-convert-videos`: Disable automatic conversion of legacy video formats to H.265/MP4 (per-run flag, not persistent)
 
 ### Timezone Configuration
 - `--timezone, --tz`: Default timezone for creation time metadata (saves as new default)
@@ -358,10 +359,116 @@ sorter.process_files(media_files)
 - `stats.py` → `constants.py`
 - `constants.py` → standalone (no dependencies)
 
+## Test Suite Implementation
+
+The photosort project includes a comprehensive pytest-based test suite that conducts end-to-end command-line-driven tests of all distinct behavior paths configurable through CLI options.
+
+### Test Architecture
+- **Real Media Testing**: Tests use real media files with actual EXIF metadata for authentic behavior
+- **Test Isolation**: Each test uses a separate temporary config directory to avoid interference
+- **CLI Integration**: Tests simulate actual command-line usage through subprocess-style execution
+- **Comprehensive Coverage**: 58 tests across 6 modules covering all major functionality
+
+### Test Structure
+```
+tests/
+├── conftest.py                     # Core fixtures and test infrastructure
+├── create_test_media.py           # Script for generating test media directory
+├── test_basic_operations.py       # Move/copy/dry-run modes and validation (9 tests)
+├── test_configuration.py          # Config persistence and defaults (12 tests)
+├── test_file_organization.py      # Date structure and file handling (8 tests)
+├── test_livephoto_processing.py   # Live Photo detection and processing (8 tests)
+├── test_video_conversion.py       # H.265 conversion and archival (9 tests)
+└── test_file_permissions.py       # File mode and group ownership (12 tests)
+```
+
+### Test Infrastructure
+- **`conftest.py`**: Core pytest fixtures including `cli_runner`, `temp_source_folder`, `mock_external_tools`
+- **`create_test_media.py`**: Comprehensive script for curating diverse test media from developer collections
+- **CLI Test Support**: Modified `photosort.cli.main()` accepts optional `config_path` parameter for test isolation
+- **Mock Strategy**: External tools (exiftool, ffmpeg) can be mocked for testing with/without dependencies
+
+### Running Tests
+
+```bash
+# Run all tests
+uv run pytest
+
+# Run specific test module
+uv run pytest tests/test_basic_operations.py -v
+
+# Run with verbose output
+uv run pytest -v
+
+# Run specific test
+uv run pytest tests/test_configuration.py::TestConfiguration::test_path_persistence -v
+```
+
+### Test Media Requirements
+Tests require an `example_media/` directory with real media files containing actual EXIF metadata. Use the provided script to create test media:
+
+```bash
+# Create test media from your photo collection
+uv run python tests/create_test_media.py
+```
+
+The script will scan your media files and create a curated test directory with diverse file types, Live Photos, and metadata files.
+
+### Test Coverage by Module
+
+1. **Basic Operations** (`test_basic_operations.py`)
+   - Move/copy/dry-run mode functionality
+   - Source/destination validation
+   - Argument parsing and flag combinations
+   - Empty source directory handling
+
+2. **Configuration** (`test_configuration.py`)
+   - Configuration file creation and persistence
+   - Path memory and defaults in help text
+   - File mode and group ownership settings
+   - Config validation and corruption handling
+
+3. **File Organization** (`test_file_organization.py`)
+   - Date-based directory structure creation
+   - Filename format and timestamp generation
+   - Duplicate detection and handling
+   - Metadata file separation and source cleanup
+
+4. **Live Photo Processing** (`test_livephoto_processing.py`)
+   - Live Photo pair detection (with/without exiftool)
+   - Shared basename generation for pairs
+   - Processing order and collision avoidance
+   - Incomplete pair handling
+
+5. **Video Conversion** (`test_video_conversion.py`)
+   - Legacy video codec detection and conversion
+   - H.265/MP4 encoding with quality settings
+   - Original video archival in history directories
+   - Copy vs. move mode handling for conversions
+
+6. **File Permissions** (`test_file_permissions.py`)
+   - Custom file mode application (644, 600, 755, etc.)
+   - Group ownership setting and validation
+   - Directory permission inheritance
+   - Permission persistence in configuration
+
+### Test Design Considerations
+
+- **Real vs. Mock Files**: Tests using `create_test_files` fixture create simple mock files without metadata, suitable for testing basic file operations. Tests using `temp_source_folder` use real media files with EXIF data for Live Photo detection and metadata extraction.
+
+- **Live Photo Testing**: Live Photo detection requires real ContentIdentifier EXIF metadata. Mock files without this metadata will be processed as individual files, which is expected behavior.
+
+- **External Tool Dependencies**: Tests can mock external tools (exiftool, ffmpeg, sips) to test behavior with/without these dependencies.
+
+- **Exit Code Philosophy**: Photosort returns exit code 0 for successful processing, even when files are moved to "Unsorted" directory. Exit code 1 is reserved for unexpected errors only.
+
+- **Configuration Persistence**: Most settings (paths, file mode, group, timezone) persist in config file, but `--no-convert-videos` is a per-run flag that doesn't persist.
+
 ### Testing Strategy
 - **Unit tests**: Each module can be tested independently
 - **Integration tests**: CLI functionality and end-to-end workflows
 - **Mock testing**: File operations for safe testing without actual file moves
+- **Real media testing**: Uses actual EXIF metadata for authentic Live Photo and date extraction testing
 
 ### Extensibility Points
 - **New file formats**: Add to `constants.py` extension lists

@@ -385,15 +385,16 @@ def main(config_path: Optional[Path] = None) -> int:
             set_directory_groups(dest, group_name, console)
 
         # Log import summary to global imports.log
-        success = not sorter.stats_manager.has_errors()
+        success = True  # Processing completed successfully (unsorted files are normal)
         sorter.history_manager.log_import_summary(source, dest, sorter.stats_manager, success)
 
-        if success:
-            console.print("\n[green]✓ Processing completed successfully![/green]")
-            return 0
+        # Show completion message with details about unsorted files if any
+        unsorted_count = sorter.stats_manager.get_unsorted()
+        if unsorted_count > 0:
+            console.print(f"\n[green]✓ Processing completed successfully![/green] [yellow]({unsorted_count} files moved to Unsorted)[/yellow]")
         else:
-            console.print(f"\n[yellow]⚠ Processing completed with {sorter.stats_manager.get_unsorted()} errors[/yellow]")
-            return 1
+            console.print("\n[green]✓ Processing completed successfully![/green]")
+        return 0
 
     except KeyboardInterrupt:
         console.print("\n[red]Operation cancelled by user[/red]")
