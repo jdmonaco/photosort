@@ -2,14 +2,13 @@
 Configuration management for photosort.
 """
 
-import logging
 import shutil
 from pathlib import Path
 from typing import Dict, Optional
 
 import yaml
 
-from .constants import PROGRAM
+from .constants import PROGRAM, get_logger
 
 
 class Config:
@@ -33,7 +32,7 @@ class Config:
             with open(self.config_path, 'r') as f:
                 return yaml.safe_load(f) or {}
         except Exception as e:
-            logger = logging.getLogger(PROGRAM)
+            logger = get_logger()
             logger.warning(f"Could not load config: {e}")
             return {}
 
@@ -44,7 +43,7 @@ class Config:
             with open(self.config_path, 'w') as f:
                 yaml.safe_dump(self.data, f, default_flow_style=False)
         except Exception as e:
-            logger = logging.getLogger(PROGRAM)
+            logger = get_logger()
             logger.error(f"Could not save config: {e}")
 
     def get_last_source(self) -> Optional[str]:

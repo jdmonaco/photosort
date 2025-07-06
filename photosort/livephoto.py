@@ -3,7 +3,6 @@ Live Photo processing functionality.
 """
 
 import json
-import logging
 import os
 import shutil
 import subprocess
@@ -15,7 +14,7 @@ from typing import Dict, List, Optional, Tuple
 from rich.console import Console
 from rich.progress import Progress
 
-from .constants import JPG_EXTENSIONS, MOVIE_EXTENSIONS, PROGRAM
+from .constants import JPG_EXTENSIONS, MOVIE_EXTENSIONS, PROGRAM, get_logger
 from .conversion import ConversionResult
 from .progress import ProgressContext
 
@@ -27,7 +26,7 @@ class LivePhotoProcessor:
                  move_files: bool = True, file_mode: Optional[int] = None,
                  group_gid: Optional[int] = None, convert_videos: bool = True,
                  video_converter=None, history_manager=None, file_ops=None,
-                 stats: Optional[Dict] = None, logger: Optional[logging.Logger] = None):
+                 stats: Optional[Dict] = None):
         self.source = source
         self.dest = dest
         self.dry_run = dry_run
@@ -41,7 +40,7 @@ class LivePhotoProcessor:
         self.unsorted_dir = self.history_manager.get_unsorted_dir()
         self.legacy_dir = self.history_manager.get_legacy_videos_dir()
         self.stats = stats or {}
-        self.logger = logger if logger else logging.getLogger(PROGRAM)
+        self.logger = get_logger()
 
     def detect_livephoto_pairs(self, media_files: List[Path]) -> Tuple[List[Path], Dict[str, Dict]]:
         """Detect LivePhoto pairs by matching Apple ContentIdentifier keys."""
@@ -297,7 +296,7 @@ class LivePhotoProcessor:
 
             # Handle video conversion if needed
             conversion = self.video_converter.handle_video_conversion(
-                file_path, self.convert_videos, progress_ctx, self.logger, "photosort_lp"
+                file_path, self.convert_videos, progress_ctx, "photosort_lp"
             )
             if not conversion.success:
                 self.stats['unsorted'] += 1

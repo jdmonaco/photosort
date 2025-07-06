@@ -24,7 +24,7 @@ from rich.table import Table
 from .config import Config
 from .constants import (
     JPG_EXTENSIONS, METADATA_EXTENSIONS, MOVIE_EXTENSIONS,
-    PHOTO_EXTENSIONS, PROGRAM, VALID_EXTENSIONS
+    PHOTO_EXTENSIONS, PROGRAM, VALID_EXTENSIONS, get_logger
 )
 from .conversion import VideoConverter, ConversionResult
 from .file_operations import FileOperations
@@ -66,7 +66,7 @@ class PhotoSorter:
             datefmt="[%X]",
             handlers=[console_handler]
         )
-        self.logger = logging.getLogger(PROGRAM)
+        self.logger = get_logger()
 
         # Initialize file operations utility
         self.file_ops = FileOperations(dry_run=dry_run, move_files=move_files,
@@ -94,7 +94,7 @@ class PhotoSorter:
             source=source, dest=dest, dry_run=dry_run, move_files=move_files,
             file_mode=file_mode, group_gid=group_gid, convert_videos=convert_videos,
             video_converter=self.video_converter, history_manager=self.history_manager,
-            file_ops=self.file_ops, stats=self.stats, logger=self.logger
+            file_ops=self.file_ops, stats=self.stats
         )
 
     def _get_video_creation_date(self, file_path: Path) -> Optional[datetime]:
@@ -327,7 +327,7 @@ class PhotoSorter:
 
         # Handle video conversion if needed
         conversion = self.video_converter.handle_video_conversion(
-            file_path, self.convert_videos, progress_ctx, self.logger
+            file_path, self.convert_videos, progress_ctx
         )
         if not conversion.success:
             self.stats['unsorted'] += 1

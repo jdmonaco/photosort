@@ -2,8 +2,15 @@
 File extension constants, program metadata, and settings for photo organization.
 """
 
+import logging
+
 # Program metadata
 PROGRAM = "photosort"
+
+
+def get_logger(name: str = PROGRAM) -> logging.Logger:
+    """Get a logger instance with consistent naming."""
+    return logging.getLogger(name)
 
 # File extension constants
 JPG_EXTENSIONS = (".jpg", ".jpeg", ".jpe")

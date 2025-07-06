@@ -3,7 +3,6 @@ Shared file operations and utilities for photo and video organization.
 """
 
 import hashlib
-import logging
 import os
 import shutil
 import subprocess
@@ -11,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from .constants import JPG_EXTENSIONS, NUISANCE_EXTENSIONS, PROGRAM
+from .constants import JPG_EXTENSIONS, NUISANCE_EXTENSIONS, PROGRAM, get_logger
 
 
 class FileOperations:
@@ -23,7 +22,7 @@ class FileOperations:
         self.move_files = move_files
         self.file_mode = mode
         self.group_gid = gid
-        self.logger = logging.getLogger(PROGRAM)
+        self.logger = get_logger()
         self.sips_available = FileOperations.check_tool_availability("sips", "-v")
 
     @staticmethod

@@ -14,7 +14,7 @@ from rich.console import Console
 from rich.progress import Progress
 
 from .config import Config
-from .constants import PROGRAM
+from .constants import PROGRAM, get_logger
 from .core import PhotoSorter
 from .progress import ProgressContext
 
@@ -312,7 +312,7 @@ def main() -> int:
 
     # Set up logging level
     if args.verbose:
-        logging.getLogger(PROGRAM).setLevel(logging.DEBUG)
+        get_logger().setLevel(logging.DEBUG)
 
     # Create sorter and process files
     sorter = PhotoSorter(

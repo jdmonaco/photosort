@@ -3,7 +3,6 @@ Video conversion functionality using ffmpeg.
 """
 
 import json
-import logging
 import os
 import subprocess
 import tempfile
@@ -11,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
-from .constants import MODERN_VIDEO_CODECS, MOVIE_EXTENSIONS, PROGRAM
+from .constants import MODERN_VIDEO_CODECS, MOVIE_EXTENSIONS, PROGRAM, get_logger
 from .file_operations import FileOperations
 from .progress import ProgressContext
 
@@ -51,7 +50,7 @@ class VideoConverter:
 
     def __init__(self, file_ops: FileOperations, dry_run: bool = False):
         self.dry_run = dry_run
-        self.logger = logging.getLogger("photosort.conversion")
+        self.logger = get_logger("photosort.conversion")
         self.file_ops = file_ops
         self.ffmpeg_available = file_ops.check_tool_availability("ffmpeg", "-version")
         self.ffprobe_available = file_ops.check_tool_availability("ffprobe", "-version")
@@ -184,7 +183,6 @@ class VideoConverter:
 
     def handle_video_conversion(self, file_path: Path, convert_videos: bool,
                                 progress_ctx: Optional[ProgressContext] = None,
-                                logger: Optional[logging.Logger] = None, 
                                 prefix: str = PROGRAM) -> ConversionResult:
         """Handle video conversion if needed, return result object.
         
@@ -192,14 +190,11 @@ class VideoConverter:
             file_path: Path to the file to potentially convert
             convert_videos: Whether video conversion is enabled
             progress_ctx: Optional progress context for updates
-            logger: Optional logger for conversion messages
             prefix: Prefix for temp file names
             
         Returns:
             ConversionResult with conversion details
         """
-        # Use provided logger or fall back to class logger
-        log = logger or self.logger
         
         # Check if conversion needed
         is_video = file_path.suffix.lower() in MOVIE_EXTENSIONS
@@ -217,7 +212,7 @@ class VideoConverter:
         success = self.convert_video(file_path, converted_path, progress_ctx)
         
         if success:
-            log.info(f"Successfully converted {file_path} -> {converted_path}")
+            self.logger.info(f"Successfully converted {file_path} -> {converted_path}")
             return ConversionResult(
                 source_file=file_path,
                 processing_file=converted_path,
@@ -226,7 +221,7 @@ class VideoConverter:
                 success=True
             )
         else:
-            log.error(f"Failed to convert video: {file_path}")
+            self.logger.error(f"Failed to convert video: {file_path}")
             return ConversionResult(
                 source_file=file_path,
                 processing_file=file_path,
