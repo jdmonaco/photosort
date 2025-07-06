@@ -30,7 +30,7 @@ class LivePhotoProcessor:
         self.file_ops = file_ops
         self.stats_manager = stats_manager
         self.logger = get_logger()
-        
+
         # Directory paths for file operations
         self.unsorted_dir = self.history_manager.get_unsorted_dir()
         self.legacy_dir = self.history_manager.get_legacy_videos_dir()
@@ -62,23 +62,49 @@ class LivePhotoProcessor:
         if not lp_candidates:
             return media_files, {}
 
-        # Call exiftool for content id and dates for all possible file types
-        result = subprocess.run([
-            "exiftool",
-            "-q",
-            "-json",
-            "-api", "QuickTimeUTC",
-            "-Make",
-            "-CreateDate",
-            "-CreationDate",
-            "-SubSecCreateDate",
-            "-LivePhotoAuto",
-            "-ContentIdentifier"] +
-            [str(f) for f in lp_candidates],
-            capture_output=True, text=True, check=True)
-
-        # Parse JSON output
-        exif_data = json.loads(result.stdout)
+        # Call exiftool for content id and dates for all possible candidate files
+        exif_data = []
+        
+        # Process files in batches to reduce subprocess overhead
+        batch_size = 100  # Process 100 files at a time
+        
+        # Create progress bar for EXIF scanning
+        console = Console()
+        with Progress(console=console) as progress:
+            scan_task = progress.add_task(
+                f"[cyan]Scanning {len(lp_candidates)} files for Live Photos...[/cyan]",
+                total=len(lp_candidates)
+            )
+            
+            # Process files in batches
+            for i in range(0, len(lp_candidates), batch_size):
+                batch = lp_candidates[i:i + batch_size]
+                
+                # Call exiftool with multiple files at once
+                cmd = [
+                    "exiftool",
+                    "-q",
+                    "-json",
+                    "-api", "QuickTimeUTC",
+                    "-Make",
+                    "-CreateDate",
+                    "-CreationDate",
+                    "-SubSecCreateDate",
+                    "-LivePhotoAuto",
+                    "-ContentIdentifier"
+                ]
+                # Add all files in batch to command
+                cmd.extend(str(f) for f in batch)
+                
+                result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+                
+                # Parse JSON output - will be a list of objects, one per file
+                json_data = json.loads(result.stdout)
+                if isinstance(json_data, list):
+                    exif_data.extend(json_data)
+                
+                # Update progress for the batch
+                progress.update(scan_task, advance=len(batch))
 
         # Group files by ContentIdentifier
         for file_data in exif_data:
@@ -111,7 +137,7 @@ class LivePhotoProcessor:
         for content_id, data in content_map.items():
             if data['image'] and data['video']:
                 # Valid Live Photo pair found
-                creation_date, milliseconds = self._parse_livephoto_date(data['dates'])
+                creation_date, milliseconds = self.file_ops._parse_EXIF_dates(data['dates'])
                 if creation_date:
                     shared_basename = self._generate_shared_basename(creation_date, milliseconds)
 
@@ -197,33 +223,6 @@ class LivePhotoProcessor:
                     non_livephoto_files.append(data['video'])
 
         return non_livephoto_files, livephoto_pairs
-
-    def _parse_livephoto_date(self, dates: Dict[str, str]) -> Tuple[Optional[datetime], int]:
-        """Parse Live Photo creation date with millisecond precision."""
-        # Priority: SubSecCreateDate > CreationDate > CreateDate
-        for date_field in ['SubSecCreateDate', 'CreationDate', 'CreateDate']:
-            if date_field in dates:
-                date_str = dates[date_field]
-                try:
-                    if date_field == 'SubSecCreateDate':
-                        # Parse with subsecond precision: "2024:12:25 14:30:22.045"
-                        if '.' in date_str:
-                            main_part, subsec_part = date_str.split('.')
-                            dt = datetime.strptime(main_part, "%Y:%m:%d %H:%M:%S")
-                            milliseconds = int(subsec_part[:3].ljust(3, '0'))
-                            return dt, milliseconds
-                        else:
-                            # No subseconds available
-                            dt = datetime.strptime(date_str, "%Y:%m:%d %H:%M:%S")
-                            return dt, 0
-                    else:
-                        # Standard date format without subseconds
-                        dt = datetime.strptime(date_str, "%Y:%m:%d %H:%M:%S")
-                        return dt, 0
-                except ValueError:
-                    continue
-
-        return None, 0
 
     def _generate_shared_basename(self, creation_date: datetime, milliseconds: int) -> str:
         """Generate shared basename for Live Photo pair using milliseconds for counter."""

@@ -8,7 +8,7 @@ import shutil
 import subprocess
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional, Tuple
 
 from .constants import JPG_EXTENSIONS, NUISANCE_EXTENSIONS, PROGRAM, get_logger
 
@@ -23,6 +23,7 @@ class FileOperations:
         self.file_mode = mode
         self.group_gid = gid
         self.logger = get_logger()
+        self.exiftool_available = FileOperations.check_tool_availability("exiftool", "-ver")
         self.sips_available = FileOperations.check_tool_availability("sips", "-v")
 
     @staticmethod
@@ -129,10 +130,60 @@ class FileOperations:
         if not self.dry_run and not directory.exists():
             directory.mkdir(parents=True, exist_ok=True)
 
+    def _parse_EXIF_dates(self, dates: Dict[str, str]) -> Tuple[Optional[datetime], int]:
+        """Parse EXIF image creation date with millisecond precision (if available)."""
+        # Priority: SubSecCreateDate > CreationDate > CreateDate
+        for date_field in ['SubSecCreateDate', 'CreationDate', 'CreateDate']:
+            if date_field in dates:
+                date_str = dates[date_field]
+                try:
+                    if date_field == 'SubSecCreateDate':
+                        # Parse with subsecond precision: "2024:12:25 14:30:22.045"
+                        if '.' in date_str:
+                            main_part, subsec_part = date_str.split('.')
+                            dt = datetime.strptime(main_part, "%Y:%m:%d %H:%M:%S")
+                            milliseconds = int(subsec_part[:3].ljust(3, '0'))
+                            return dt, milliseconds
+                        else:
+                            # No subseconds available
+                            dt = datetime.strptime(date_str, "%Y:%m:%d %H:%M:%S")
+                            return dt, 0
+                    else:
+                        # Standard date format without subseconds
+                        dt = datetime.strptime(date_str, "%Y:%m:%d %H:%M:%S")
+                        return dt, 0
+                except ValueError:
+                    continue
+
+        return None, 0
+
     def image_creation_date(self, image_path: Path) -> datetime:
-        """Get creation time for any image using sips or file modification time."""
+        """Get creation date for any image using exiftool, sips, or file stat."""
+        if self.exiftool_available:
+            try:
+                # Call exiftool to retrieve creation timestamps
+                result = subprocess.run([
+                    "exiftool",
+                    "-q",
+                    "-json",
+                    "-CreateDate",
+                    "-CreationDate",
+                    "-SubSecCreateDate",
+                    str(image_path)],
+                    capture_output=True, text=True, check=True)
+
+                # Parse JSON output and process creation date tags in order
+                exif_data = json.loads(result.stdout)
+                if isinstance(exif_data, list) and len(exif_data) > 0:
+                    creation_date, milliseconds = self._parse_EXIF_dates(exif_data[0])
+                    if creation_date:
+                        return creation_date
+            except (subprocess.CalledProcessError, Exception):
+                pass
+
         if self.sips_available:
             try:
+                # Call sips tool to retrieve creation timestamps
                 result = subprocess.run(
                     ["sips", "-g", "creation", str(image_path)],
                     capture_output=True, text=True, check=True
