@@ -13,9 +13,11 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from rich.console import Console
-from rich.progress import Progress, TaskID
+from rich.progress import Progress
 
 from .constants import JPG_EXTENSIONS, MOVIE_EXTENSIONS, PROGRAM
+from .conversion import ConversionResult
+from .progress import ProgressContext
 
 
 class LivePhotoProcessor:
@@ -36,7 +38,7 @@ class LivePhotoProcessor:
         self.video_converter = video_converter
         self.history_manager = history_manager
         self.file_ops = file_ops
-        self.error_dir = self.history_manager.get_unsorted_dir()
+        self.unsorted_dir = self.history_manager.get_unsorted_dir()
         self.legacy_dir = self.history_manager.get_legacy_videos_dir()
         self.stats = stats or {}
         self.logger = logger if logger else logging.getLogger(PROGRAM)
@@ -237,152 +239,122 @@ class LivePhotoProcessor:
         counter = milliseconds if milliseconds > 0 else 0
         return f"{timestamp}_{counter:03d}"
 
-    def process_livephoto_pairs(self, livephoto_pairs: Dict[str, Dict]) -> None:
+    def process_livephoto_pairs(self, livephoto_pairs: Dict[str, Dict], progress_ctx=None) -> None:
         """Process Live Photo pairs with shared basenames."""
         if not livephoto_pairs:
             return
 
         self.logger.info(f"Processing {len(livephoto_pairs)} Live Photo pairs")
 
-        console = Console()
-        with Progress(console=console) as progress:
-            task = progress.add_task("Processing Live Photos...", total=len(livephoto_pairs) * 2)
+        # If no progress context provided, create our own
+        if progress_ctx is None:
+            console = Console()
+            with Progress(console=console) as progress:
+                task = progress.add_task("Processing Live Photos...", total=len(livephoto_pairs) * 2)
+                progress_ctx = ProgressContext(progress, task)
+                self._process_pairs_with_progress(livephoto_pairs, progress_ctx)
+        else:
+            self._process_pairs_with_progress(livephoto_pairs, progress_ctx)
 
-            for pair_id, pair_data in livephoto_pairs.items():
-                try:
-                    image_file = pair_data['image_file']
-                    video_file = pair_data['video_file']
-                    shared_basename = pair_data['shared_basename']
-                    creation_date = pair_data['creation_date']
+    def _process_pairs_with_progress(self, livephoto_pairs: Dict[str, Dict], progress_ctx) -> None:
+        """Internal method to process pairs with a given progress context."""
+        for pair_id, pair_data in livephoto_pairs.items():
+            try:
+                image_file = pair_data['image_file']
+                video_file = pair_data['video_file']
+                shared_basename = pair_data['shared_basename']
+                creation_date = pair_data['creation_date']
 
-                    # Process image file with shared basename
-                    success_image = self._process_livephoto_file(
-                        image_file, shared_basename, creation_date, progress, task
-                    )
+                # Process image file with shared basename
+                success_image = self._process_livephoto_file(
+                    image_file, shared_basename, creation_date, progress_ctx
+                )
 
-                    # Process video file with shared basename
-                    success_video = self._process_livephoto_file(
-                        video_file, shared_basename, creation_date, progress, task
-                    )
+                # Process video file with shared basename
+                success_video = self._process_livephoto_file(
+                    video_file, shared_basename, creation_date, progress_ctx
+                )
 
-                    if success_image and success_video:
-                        self.stats['livephoto_pairs'] += 1
-                        self.logger.debug(f"Successfully processed Live Photo pair: {image_file.name} + {video_file.name}")
-                    else:
-                        self.logger.error(f"Failed to process Live Photo pair: {image_file.name} + {video_file.name}")
+                if success_image and success_video:
+                    self.stats['livephoto_pairs'] += 1
+                    self.logger.debug(f"Successfully processed Live Photo pair: {image_file.name} + {video_file.name}")
+                else:
+                    self.logger.error(f"Failed to process Live Photo pair: {image_file.name} + {video_file.name}")
 
-                except Exception as e:
-                    self.logger.error(f"Error processing Live Photo pair {pair_id}: {e}")
-                    self.stats['errors'] += 2
-                    if not self.dry_run:
-                        error_dir = self.history_manager.get_unsorted_dir()
-                        self.file_ops.move_to_error_directory(pair_data['image_file'], error_dir)
-                        self.file_ops.move_to_error_directory(pair_data['video_file'], error_dir)
-                    progress.advance(task, 2)
+            except Exception as e:
+                self.logger.error(f"Error processing Live Photo pair {pair_id}: {e}")
+                self.stats['unsorted'] += 2
+                self.file_ops.archive_file(pair_data['image_file'], self.unsorted_dir, preserve_structure=False)
+                self.file_ops.archive_file(pair_data['video_file'], self.unsorted_dir, preserve_structure=False)
+                progress_ctx.advance(2)
 
     def _process_livephoto_file(self, file_path: Path, shared_basename: str,
-                               creation_date: datetime, progress: Progress, task: TaskID) -> bool:
+                               creation_date: datetime, progress_ctx) -> bool:
         """Process a single Live Photo file with predetermined basename."""
         try:
             # Get file size before operations
             file_size = file_path.stat().st_size
 
-            # Check if this is a video that needs conversion
-            is_video = file_path.suffix.lower() in MOVIE_EXTENSIONS
-            needs_conversion = (
-                is_video and
-                self.convert_videos and
-                self.video_converter.needs_conversion(file_path)
+            # Handle video conversion if needed
+            conversion = self.video_converter.handle_video_conversion(
+                file_path, self.convert_videos, progress_ctx, self.logger, "photosort_lp"
             )
+            if not conversion.success:
+                self.stats['unsorted'] += 1
+                self.file_ops.cleanup_failed_move(
+                    conversion.source_file, conversion.processing_file,
+                    conversion.temp_file, self.unsorted_dir
+                )
+                progress_ctx.advance()
+                return False
 
-            # Determine processing file (original or converted)
-            processing_file = file_path
-            temp_converted_file = None
-            if needs_conversion:
-                # Always use temp directory for conversion to avoid polluting source
-                # Create temp file for conversion
-                temp_fd, temp_path = tempfile.mkstemp(suffix=".mp4", prefix="photosort_lp_")
-                os.close(temp_fd)  # Close file descriptor, keep path
-                converted_path = Path(temp_path)
-                temp_converted_file = converted_path
-
-                progress.update(task, description=f"Converting Live Photo: {file_path.name}")
-                if self.video_converter.convert_video(file_path, converted_path, progress, task):
-                    processing_file = converted_path
-                    self.stats['converted_videos'] += 1
-                    self.logger.info(f"Successfully converted Live Photo video {file_path} -> {converted_path}")
-                else:
-                    self.logger.error(f"Failed to convert Live Photo video: {file_path}")
-                    self.stats['errors'] += 1
-                    error_dir = self.history_manager.get_unsorted_dir()
-                    self.file_ops.cleanup_failed_conversion(file_path, processing_file, temp_converted_file, error_dir)
-                    progress.advance(task)
-                    return False
+            # Update stats for successful conversion
+            if conversion.was_converted:
+                self.stats['converted_videos'] += 1
 
             # Generate destination path using shared basename
             year = f"{creation_date.year:04d}"
             month = f"{creation_date.month:02d}"
             dest_dir = self.dest / year / month
-            ext = processing_file.suffix.lower()
+            ext = conversion.processing_file.suffix.lower()
             ext = self.file_ops.normalize_jpg_extension(ext)
             dest_path = dest_dir / f"{shared_basename}{ext}"
 
             # Check for duplicates if the destination file already exists
-            if dest_path.exists() and self.file_ops.is_duplicate(processing_file, dest_path):
+            if dest_path.exists() and self.file_ops.is_duplicate(conversion.processing_file, dest_path):
                 self.stats['duplicates'] += 1
-                progress.update(task, description=f"Skipping duplicate Live Photo: {processing_file.name}")
-
-                # Clean up files based on mode
-                self.file_ops.handle_duplicate_cleanup(
-                        processing_file,
-                        file_path,
-                        needs_conversion,
-                        self.move_files,
-                        temp_converted_file
-                )
-
-                progress.advance(task)
+                progress_ctx.update(f"Skipping duplicate Live Photo: {conversion.processing_file.name}")
+                self.file_ops.handle_duplicate_cleanup(conversion.source_file, conversion.temp_file)
+                progress_ctx.advance()
                 return True
 
             # Move processed file to destination
-            if self.file_ops.move_file_safely(processing_file, dest_path):
+            if self.file_ops.move_file_safely(conversion.processing_file, dest_path):
                 # If we converted a video, handle cleanup based on mode
-                if needs_conversion:
-                    self.file_ops.handle_conversion_cleanup(
-                            needs_conversion,
-                            self.move_files,
-                            file_path,
-                            processing_file,
-                            temp_converted_file,
-                            self.source,
-                            self.legacy_videos_dir
+                if conversion.was_converted:
+                    conversion.handle_conversion_cleanup(
+                        self.file_ops, self.source, self.legacy_videos_dir
                     )
 
+                is_video = file_path.suffix.lower() in MOVIE_EXTENSIONS
                 self.file_ops.update_file_stats(self.stats, is_video, file_size)
-                progress.update(task, description=f"Processed Live Photo: {file_path.name}")
-                progress.advance(task)
+                progress_ctx.update(f"Processed Live Photo: {file_path.name}")
+                progress_ctx.advance()
                 return True
             else:
-                self.stats['errors'] += 1
+                self.stats['unsorted'] += 1
                 self.file_ops.cleanup_failed_move(
-                        file_path,
-                        processing_file,
-                        temp_converted_file,
-                        needs_conversion,
-                        self.error_dir
+                    conversion.source_file, conversion.processing_file,
+                    conversion.temp_file, self.unsorted_dir
                 )
-                progress.advance(task)
+                progress_ctx.advance()
                 return False
 
         except Exception as e:
             self.logger.error(f"Error processing Live Photo file {file_path}: {e}")
-            self.stats['errors'] += 1
-            self.file_ops.move_to_error_directory(file_path, self.error_dir)
-            if temp_converted_file and temp_converted_file.exists():
-                try:
-                    temp_converted_file.unlink()
-                except Exception:
-                    pass
-            progress.advance(task)
+            self.stats['unsorted'] += 1
+            self.file_ops.archive_file(file_path, self.unsorted_dir, preserve_structure=False)
+            conversion.cleanup_temp()
+            progress_ctx.advance()
             return False
 

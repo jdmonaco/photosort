@@ -11,13 +11,14 @@ import shutil
 import subprocess
 import tempfile
 import zoneinfo
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from rich.console import Console
 from rich.logging import RichHandler
-from rich.progress import Progress, TaskID
+from rich.progress import Progress
 from rich.table import Table
 
 from .config import Config
@@ -25,10 +26,11 @@ from .constants import (
     JPG_EXTENSIONS, METADATA_EXTENSIONS, MOVIE_EXTENSIONS,
     PHOTO_EXTENSIONS, PROGRAM, VALID_EXTENSIONS
 )
-from .conversion import VideoConverter
+from .conversion import VideoConverter, ConversionResult
 from .file_operations import FileOperations
 from .history import HistoryManager
 from .livephoto import LivePhotoProcessor
+from .progress import ProgressContext
 
 
 class PhotoSorter:
@@ -50,7 +52,7 @@ class PhotoSorter:
         self.console = Console()
         self.stats = {
             'photos': 0, 'videos': 0, 'metadata': 0,
-            'duplicates': 0, 'errors': 0, 'total_size': 0,
+            'duplicates': 0, 'unsorted': 0, 'total_size': 0,
             'converted_videos': 0, 'livephoto_pairs': 0
         }
 
@@ -83,7 +85,7 @@ class PhotoSorter:
         self.logger.info(f"Mode: {'DRY RUN' if self.dry_run else 'MOVE' if self.move_files else 'COPY'}")
 
         # Retrieve directory paths from history manager
-        self.error_dir = self.history_manager.get_unsorted_dir()
+        self.unsorted_dir = self.history_manager.get_unsorted_dir()
         self.metadata_dir = self.history_manager.get_metadata_dir()
         self.legacy_videos_dir = self.history_manager.get_legacy_videos_dir()
 
@@ -230,33 +232,30 @@ class PhotoSorter:
 
         return sorted(media_files), sorted(metadata_files), livephoto_pairs
 
-    def get_destination_path(self, file_path: Path, creation_date: datetime) -> Path:
-        """Generate destination path for a file."""
+    def get_destination_path(self, file_path: Path, creation_date: datetime) -> Tuple[Path, bool]:
+        """Generate destination path and dupe check. Returns (dest_path, is_dupe)."""
         year = f"{creation_date.year:04d}"
         month = f"{creation_date.month:02d}"
 
-        # Format filename with timestamp
+        # Create destination path and filename from timestamp and counter
+        counter = 0
         timestamp = creation_date.strftime("%Y%m%d_%H%M%S")
         ext = file_path.suffix.lower()
-
-        # Normalize JPG extensions
         ext = self.file_ops.normalize_jpg_extension(ext)
-
-        # Create destination directory
         dest_dir = self.dest / year / month
-
-        # Create the filename from the timestamp and a 2-digit counter
-        counter = 0
         dest_file = dest_dir / f"{timestamp}_{counter:03d}{ext}"
 
-        # Handle filename conflicts
-        while dest_file.exists() and not self.file_ops.is_duplicate(file_path, dest_file):
+        # Handle filename conflicts (due to photo bursts) and report duplicates
+        while dest_file.exists():
+            if self.file_ops.is_duplicate(file_path, dest_file):
+                return dest_file, True
+
             dest_file = dest_dir / f"{timestamp}_{counter:03d}{ext}"
             counter += 1
 
-        return dest_file
+        return dest_file, False
 
-    def process_metadata_files(self, metadata_files: List[Path]) -> None:
+    def process_metadata_files(self, metadata_files: List[Path], progress_ctx: Optional[ProgressContext] = None) -> None:
         """Process metadata files by moving them to history Metadata directory."""
         if not metadata_files:
             return
@@ -272,124 +271,103 @@ class PhotoSorter:
                 if self.file_ops.move_file_safely(file_path, dest_path):
                     self.stats['metadata'] += 1
                 else:
-                    self.stats['errors'] += 1
+                    self.stats['unsorted'] += 1
                     if not self.dry_run:
-                        self.file_ops.move_to_error_directory(file_path, self.error_dir)
+                        self.file_ops.archive_file(file_path, self.unsorted_dir, preserve_structure=False)
 
             except Exception as e:
                 self.logger.error(f"Error processing metadata file {file_path}: {e}")
-                self.stats['errors'] += 1
+                self.stats['unsorted'] += 1
                 if not self.dry_run:
-                    self.file_ops.move_to_error_directory(file_path, self.error_dir)
+                    self.file_ops.archive_file(file_path, self.unsorted_dir, preserve_structure=False)
 
-    def process_livephoto_pairs(self, livephoto_pairs: Dict[str, Dict]) -> None:
+            # Advance progress if context provided
+            if progress_ctx:
+                progress_ctx.advance()
+
+    def process_livephoto_pairs(self, livephoto_pairs: Dict[str, Dict], progress_ctx: Optional[ProgressContext] = None) -> None:
         """Process Live Photo pairs with shared basenames."""
-        self.live_photo_processor.process_livephoto_pairs(livephoto_pairs)
+        self.live_photo_processor.process_livephoto_pairs(livephoto_pairs, progress_ctx)
 
-    def process_files(self, files: List[Path]) -> None:
+    def process_files(self, files: List[Path], progress_ctx: Optional[ProgressContext] = None) -> None:
         """Process all files with progress tracking."""
         self.logger.info(f"Starting to process {len(files)} files")
-        with Progress(console=self.console) as progress:
-            task = progress.add_task("Processing files...", total=len(files))
 
-            for file_path in files:
-                try:
-                    self._process_single_file(file_path, progress, task)
-                except Exception as e:
-                    self.logger.error(f"Error processing {file_path}: {e}")
-                    self.stats['errors'] += 1
-                    if not self.dry_run:
-                        self.file_ops.move_to_error_directory(file_path, self.error_dir)
+        # If no progress context provided, create our own
+        if progress_ctx is None:
+            with Progress(console=self.console) as progress:
+                task = progress.add_task("Processing files...", total=len(files))
+                progress_ctx = ProgressContext(progress, task)
+                self._process_files_with_progress(files, progress_ctx)
+        else:
+            self._process_files_with_progress(files, progress_ctx)
 
-                progress.advance(task)
+    def _process_files_with_progress(self, files: List[Path], progress_ctx: ProgressContext) -> None:
+        """Internal method to process files with a given progress context."""
+        for file_path in files:
+            try:
+                self._process_single_file(file_path, progress_ctx)
+            except Exception as e:
+                self.logger.error(f"Error processing {file_path}: {e}")
+                self.stats['unsorted'] += 1
+                if not self.dry_run:
+                    self.file_ops.archive_file(file_path, self.unsorted_dir, preserve_structure=False)
 
-    def _process_single_file(self, file_path: Path, progress: Progress, task: TaskID) -> None:
+            progress_ctx.advance()
+
+    def _process_single_file(self, file_path: Path, progress_ctx: ProgressContext) -> None:
         """Process a single media file."""
         # Get file size before any operations
         file_size = file_path.stat().st_size
 
         # Get creation date
         creation_date = self.get_creation_date(file_path)
+        if not creation_date:
+            return
 
-        # Check if this is a video that needs conversion
-        is_video = file_path.suffix.lower() in MOVIE_EXTENSIONS
-        needs_conversion = (
-            is_video and
-            self.convert_videos and
-            self.video_converter.needs_conversion(file_path)
+        # Handle video conversion if needed
+        conversion = self.video_converter.handle_video_conversion(
+            file_path, self.convert_videos, progress_ctx, self.logger
         )
+        if not conversion.success:
+            self.stats['unsorted'] += 1
+            self.file_ops.cleanup_failed_move(
+                conversion.source_file, conversion.processing_file,
+                conversion.temp_file, self.unsorted_dir
+            )
+            return
 
-        # Determine what file we'll actually process (original or converted)
-        processing_file = file_path
-        temp_converted_file = None
-        if needs_conversion:
-            # Always use temp directory for conversion to avoid polluting source
-            # Create temp file for conversion
-            temp_fd, temp_path = tempfile.mkstemp(suffix=".mp4", prefix=f"{PROGRAM}_")
-            os.close(temp_fd)  # Close file descriptor, keep path
-            converted_path = Path(temp_path)
-            temp_converted_file = converted_path
-
-            # Convert the video
-            progress.update(task, description=f"Converting: {file_path.name}")
-            if self.video_converter.convert_video(file_path, converted_path, progress, task):
-                processing_file = converted_path
-                self.stats['converted_videos'] += 1
-                self.logger.info(f"Successfully converted {file_path} -> {converted_path}")
-            else:
-                self.logger.error(f"Failed to convert video: {file_path}")
-                self.stats['errors'] += 1
-                self.file_ops.cleanup_failed_conversion(file_path, processing_file, temp_converted_file, self.error_dir)
-                return
+        # Update stats for successful conversion
+        if conversion.was_converted:
+            self.stats['converted_videos'] += 1
 
         # Generate destination path based on the processing file
-        dest_path = self.get_destination_path(processing_file, creation_date)
+        dest_path, is_dupe = self.get_destination_path(conversion.processing_file, creation_date)
 
-        # TODO: Update destination path check for converted video paths so that
-        # converted video "duplicates" are handled correctly, including not processing
-        # video conversions in COPY/DRY-RUN mode.
-
-        # Check for duplicates
-        if dest_path.exists() and self.file_ops.is_duplicate(processing_file, dest_path):
+        # Gracefully cleanup if duplicates found
+        if is_dupe:
             self.stats['duplicates'] += 1
-            progress.update(task, description=f"Skipping duplicate: {processing_file.name}")
-
-            # Clean up files based on mode
-            self.file_ops.handle_duplicate_cleanup(
-                    processing_file,
-                    file_path,
-                    needs_conversion,
-                    self.move_files,
-                    temp_converted_file
-            )
-
+            progress_ctx.update(f"Skipping duplicate: {conversion.processing_file.name}")
+            self.file_ops.handle_duplicate_cleanup(conversion.source_file, conversion.temp_file)
             return
 
         # Move processed file to destination
-        if self.file_ops.move_file_safely(processing_file, dest_path):
+        if self.file_ops.move_file_safely(conversion.processing_file, dest_path):
             # If we converted a video, handle cleanup based on mode
-            if needs_conversion:
-                self.file_ops.handle_conversion_cleanup(
-                        needs_conversion,
-                        self.move_files,
-                        file_path,
-                        processing_file,
-                        temp_converted_file,
-                        self.source,
-                        self.legacy_videos_dir
+            if conversion.was_converted:
+                conversion.handle_conversion_cleanup(
+                    self.file_ops, self.source, self.legacy_videos_dir
                 )
 
             # Update stats and progress
+            is_video = file_path.suffix.lower() in MOVIE_EXTENSIONS
             self.file_ops.update_file_stats(self.stats, is_video, file_size)
-            progress.update(task, description=f"Processed: {file_path.name}")
+            progress_ctx.update(f"Processed: {file_path.name}")
         else:
-            self.stats['errors'] += 1
+            self.stats['unsorted'] += 1
             self.file_ops.cleanup_failed_move(
-                    file_path,
-                    processing_file,
-                    temp_converted_file,
-                    needs_conversion,
-                    self.error_dir
+                conversion.source_file, conversion.processing_file,
+                conversion.temp_file, self.unsorted_dir
             )
 
     def print_summary(self) -> None:
@@ -400,11 +378,11 @@ class PhotoSorter:
 
         table.add_row("Photos", str(self.stats['photos']))
         table.add_row("Videos", str(self.stats['videos']))
-        table.add_row("Live Photo Pairs", str(self.stats['livephoto_pairs']))
+        table.add_row("Live Photos", str(self.stats['livephoto_pairs']))
         table.add_row("Metadata Files", str(self.stats['metadata']))
         table.add_row("Videos Converted", str(self.stats['converted_videos']))
         table.add_row("Duplicates Skipped", str(self.stats['duplicates']))
-        table.add_row("Errors", str(self.stats['errors']))
+        table.add_row("Unsorted", str(self.stats['unsorted']))
 
         # Format total size
         size_mb = self.stats['total_size'] / (1024 * 1024)
@@ -417,6 +395,6 @@ class PhotoSorter:
         print()
         self.console.print(table)
 
-        if self.stats['errors'] > 0:
-            self.console.print(f"\n[red]Problematic files moved to: {self.error_dir}[/red]")
+        if self.stats['unsorted'] > 0:
+            self.console.print(f"\n[red]Problematic files moved to: {self.unsorted_dir}[/red]")
 

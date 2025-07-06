@@ -11,10 +11,12 @@ import sys
 from pathlib import Path
 
 from rich.console import Console
+from rich.progress import Progress
 
 from .config import Config
 from .constants import PROGRAM
 from .core import PhotoSorter
+from .progress import ProgressContext
 
 
 def parse_file_mode(mode_str: str) -> int:
@@ -343,21 +345,26 @@ def main() -> int:
 
     console.print(f"Found {len(media_files)} individual files and {len(livephoto_pairs)} Live Photo pairs to process")
 
+    # Calculate total items for progress tracking
+    total_items = len(media_files) + (len(livephoto_pairs) * 2) + len(metadata_files)
+
     try:
-        # Process Live Photo pairs first (to avoid filename collisions)
-        if livephoto_pairs:
-            console.print("Processing Live Photo pairs...")
-            sorter.process_livephoto_pairs(livephoto_pairs)
+        # Create a single progress bar for all operations
+        with Progress(console=console) as progress:
+            task = progress.add_task("Processing all files...", total=total_items)
+            progress_ctx = ProgressContext(progress, task)
 
-        # Process remaining individual media files
-        if media_files:
-            console.print("Processing individual media files...")
-            sorter.process_files(media_files)
+            # Process Live Photo pairs first (to avoid filename collisions)
+            if livephoto_pairs:
+                sorter.process_livephoto_pairs(livephoto_pairs, progress_ctx)
 
-        # Process metadata files after media files
-        if metadata_files:
-            console.print("Processing metadata files...")
-            sorter.process_metadata_files(metadata_files)
+            # Process remaining individual media files
+            if media_files:
+                sorter.process_files(media_files, progress_ctx)
+
+            # Process metadata files after media files
+            if metadata_files:
+                sorter.process_metadata_files(metadata_files, progress_ctx)
 
         # If moving files (and not dry-run), clean up the source directory
         if not args.copy and not args.dry_run:
@@ -373,14 +380,14 @@ def main() -> int:
             set_directory_groups(dest, group_name, console)
 
         # Log import summary to global imports.log
-        success = sorter.stats['errors'] == 0
+        success = sorter.stats['unsorted'] == 0
         sorter.history_manager.log_import_summary(source, dest, sorter.stats, success)
 
         if success:
             console.print("\n[green]✓ Processing completed successfully![/green]")
             return 0
         else:
-            console.print(f"\n[yellow]⚠ Processing completed with {sorter.stats['errors']} errors[/yellow]")
+            console.print(f"\n[yellow]⚠ Processing completed with {sorter.stats['unsorted']} errors[/yellow]")
             return 1
 
     except KeyboardInterrupt:

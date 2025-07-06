@@ -14,11 +14,12 @@ __copyright__ = "Copyright (c) 2025 Joe Monaco (joe@selfmotion.net)"
 # Public API
 from .cli import main
 from .config import Config
-from .conversion import VideoConverter
+from .conversion import VideoConverter, ConversionResult
 from .core import PhotoSorter
 from .file_operations import FileOperations
 from .history import HistoryManager
 from .livephoto import LivePhotoProcessor
+from .progress import ProgressContext
 
-__all__ = [ "main", "Config", "VideoConverter", "PhotoSorter", "HistoryManager", "LivePhotoProcessor", "FileOperations" ]
+__all__ = [ "main", "Config", "VideoConverter", "ConversionResult", "PhotoSorter", "HistoryManager", "LivePhotoProcessor", "FileOperations", "ProgressContext" ]
 

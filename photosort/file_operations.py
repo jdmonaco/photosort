@@ -171,132 +171,94 @@ class FileOperations:
         except Exception as e:
             self.logger.error(f"Failed to set group on {file_path}: {e}")
 
-    def create_unique_error_path(self, error_dir: Path, file_path: Path) -> Path:
-        """Generate unique error file path with counter if needed."""
-        error_dest = error_dir / file_path.name
+    def create_unique_path(self, dest_dir: Path, file_path: Path) -> Path:
+        """Generate unique file path with counter if needed."""
+        stem = file_path.stem
+        suffix = file_path.suffix
+        dest_path = dest_dir / file_path.name
         counter = 1
-        while error_dest.exists():
-            stem = file_path.stem
-            suffix = file_path.suffix
-            error_dest = error_dir / f"{stem}_{counter:03d}{suffix}"
+        while dest_path.exists():
+            dest_path = dest_dir / f"{stem}_{counter:03d}{suffix}"
             counter += 1
-        return error_dest
+        return dest_path
 
-    def move_to_error_directory(self, file_path: Path, error_dir: Path) -> None:
-        """Move problematic file to error directory."""
-        self.ensure_directory(error_dir)
+    def delete_safely(self, file_to_delete: Optional[Path]) -> bool:
+        """Unlink the file path if one is provided. Return success."""
+        if self.dry_run:
+            return True
+
+        if file_to_delete and file_to_delete.exists():
+            try:
+                file_to_delete.unlink()
+            except Exception:
+                return False
+        return True
+
+    def archive_file(self, file_path: Path, archive_dir: Path,
+                     preserve_structure: bool = True, source_root: Optional[Path] = None) -> bool:
+        """Archive file to specified directory with optional path preservation."""
+        if self.dry_run:
+            return True
 
         try:
-            error_dest = self.create_unique_error_path(error_dir, file_path)
-            if not self.dry_run:
-                shutil.copy2(str(file_path), str(error_dest))
-            self.logger.debug(f"Moved error file: {file_path} -> {error_dest}")
-        except Exception as e:
-            self.logger.error(f"Could not move error file {file_path}: {e}")
+            if preserve_structure and source_root:
+                # Preserve relative path structure
+                relative_path = file_path.relative_to(source_root)
+                dest_path = archive_dir / relative_path
+            else:
+                # Simple move to archive directory with unique naming
+                dest_path = self.create_unique_path(archive_dir, file_path)
 
-    def archive_original_video(self, original_path: Path, source_root: Path,
-                               legacy_dir: Path, move_files: bool) -> bool:
-        """Archive original video to legacy directory preserving relative path."""
-        try:
-            # Preserve relative path structure in legacy videos directory
-            relative_path = original_path.relative_to(source_root)
-            legacy_dest = legacy_dir / relative_path
+            self.ensure_directory(dest_path.parent)
 
-            # Create parent directories if needed
-            self.ensure_directory(legacy_dest.parent)
+            if self.move_files:
+                file_path.rename(dest_path)
+            else:
+                shutil.copy2(str(file_path), str(dest_path))
 
-            if not self.dry_run:
-                if move_files:
-                    # MOVE mode: move original to legacy directory
-                    original_path.rename(legacy_dest)
-                else:
-                    # COPY mode: copy original to legacy directory
-                    shutil.copy2(str(original_path), str(legacy_dest))
-
-            self.logger.info(f"Archived original video: {original_path} -> {legacy_dest}")
+            self.logger.info(f"Archived: {file_path} -> {dest_path}")
             return True
         except Exception as e:
-            self.logger.warning(f"Could not archive original video {original_path}: {e}")
+            self.logger.warning(f"Could not archive {file_path}: {e}")
             return False
 
-    def handle_conversion_cleanup(self, needs_conversion: bool, move_files: bool,
-                                  original_path: Path, processing_path: Path,
-                                  temp_converted_file: Optional[Path], source_root: Path,
-                                  legacy_dir: Path) -> None:
-        """Handle cleanup after video conversion, archiving originals and removing temp files."""
-        if not needs_conversion or self.dry_run:
-            return
-
-        # Archive original video
-        self.archive_original_video(original_path, source_root, legacy_dir, move_files)
-
-        # Clean up temp converted file (always present now since we always use temp files)
-        if temp_converted_file and temp_converted_file.exists():
-            try:
-                temp_converted_file.unlink()
-                self.logger.debug(f"Cleaned up temp converted file: {temp_converted_file}")
-            except Exception as e:
-                self.logger.warning(f"Could not clean up temp file {temp_converted_file}: {e}")
-
-    def handle_duplicate_cleanup(self, processing_file: Path, original_file: Path,
-                                 needs_conversion: bool, move_files: bool,
+    def handle_duplicate_cleanup(self, original_file: Path,
                                  temp_converted_file: Optional[Path]) -> None:
         """Handle cleanup when duplicate files are detected, removing sources or temp files."""
         if self.dry_run:
             return
 
-        # Clean up temp converted file if conversion happened (always present now)
-        if needs_conversion and temp_converted_file and temp_converted_file.exists():
-            try:
-                temp_converted_file.unlink()
-                self.logger.debug(f"Cleaned up temp converted file: {temp_converted_file}")
-            except Exception as e:
-                self.logger.warning(f"Could not clean up temp file {temp_converted_file}: {e}")
-
-        if move_files:
-            # MOVE mode: delete original source file
+        # MOVE mode: delete original source file
+        if self.move_files:
             try:
                 original_file.unlink()
-                self.logger.debug(f"Deleted duplicate source file: {original_file}")
+                self.logger.debug(f"Deleted duplicate file: {original_file}")
             except Exception as e:
-                self.logger.warning(f"Could not delete duplicate source file {original_file}: {e}")
+                self.logger.warning(f"Could not delete duplicate file {original_file}: {e}")
 
-    def cleanup_failed_conversion(self, original_file: Path, processing_file: Path,
-                                  temp_converted_file: Optional[Path], error_dir: Path) -> None:
-        """Clean up files when conversion fails, moving originals to error directory."""
-        if self.dry_run:
-            return
-
-        # Clean up temp file if conversion failed
+        # Clean up temp converted file if conversion happened
         if temp_converted_file and temp_converted_file.exists():
             try:
                 temp_converted_file.unlink()
-            except Exception:
-                pass
-
-        # Move original to error directory
-        self.move_to_error_directory(original_file, error_dir)
+                self.logger.debug(f"Cleaned up temp file: {temp_converted_file}")
+            except Exception as e:
+                self.logger.warning(f"Could not clean up temp file {temp_converted_file}: {e}")
 
     def cleanup_failed_move(self, original_file: Path, processing_file: Path,
-                            temp_converted_file: Optional[Path], needs_conversion: bool,
-                            error_dir: Path) -> None:
-        """Clean up files when move operation fails, preserving originals in error directory."""
+                            temp_converted_file: Optional[Path], unsorted_dir: Path) -> None:
+        """Clean up temp files and preserve original file in unsorted directory."""
         if self.dry_run:
             return
 
         # Move original to error directory
-        self.move_to_error_directory(original_file, error_dir)
+        self.archive_file(original_file, unsorted_dir)
 
-        # Clean up temp converted file if conversion happened (always temp file now)
-        if needs_conversion and temp_converted_file and temp_converted_file.exists():
-            try:
-                temp_converted_file.unlink()
-            except Exception:
-                pass
+        # Clean up temp converted videl file
+        self.delete_safely(temp_converted_file)
 
     def cleanup_source_directory(self, source: Path, unsorted_path: Path) -> None:
         """Clean up source directory by removing nuisance files, pruning empty folders, and moving unknowns."""
-        if not any(source.iterdir()):
+        if self.dry_run or not any(source.iterdir()):
             return
 
         self.logger.info("Cleaning source folder...")
@@ -305,10 +267,9 @@ class FileOperations:
         nuisance_count = 0
         for file_path in source.rglob("*"):
             if file_path.is_file() and file_path.name.lower() in NUISANCE_EXTENSIONS:
-                try:
-                    file_path.unlink()
+                if self.delete_safely(file_path):
                     nuisance_count += 1
-                except Exception as e:
+                else:
                     self.logger.warning(f"[yellow]Warning: Could not remove {file_path}: {e}[/yellow]")
 
         if nuisance_count > 0:

@@ -7,13 +7,43 @@ import logging
 import os
 import subprocess
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
-from rich.progress import Progress, TaskID
-
-from .constants import MODERN_VIDEO_CODECS
+from .constants import MODERN_VIDEO_CODECS, MOVIE_EXTENSIONS, PROGRAM
 from .file_operations import FileOperations
+from .progress import ProgressContext
+
+
+@dataclass
+class ConversionResult:
+    """Result of video conversion operation."""
+    source_file: Path
+    processing_file: Path  # File to actually process (original or converted)
+    temp_file: Optional[Path] = None  # Temp file to clean up
+    was_converted: bool = False
+    success: bool = True
+    
+    def cleanup_temp(self) -> None:
+        """Clean up temporary file if it exists."""
+        if self.temp_file and self.temp_file.exists():
+            try:
+                self.temp_file.unlink()
+            except Exception:
+                pass
+    
+    def handle_conversion_cleanup(self, file_ops: FileOperations, source_root: Path, 
+                                  legacy_dir: Path) -> None:
+        """Handle cleanup after video conversion, archiving originals and removing temp files."""
+        if not self.was_converted:
+            return
+        
+        # Archive original video
+        file_ops.archive_file(self.source_file, legacy_dir, preserve_structure=True, source_root=source_root)
+        
+        # Clean up temp converted video file
+        self.cleanup_temp()
 
 
 class VideoConverter:
@@ -62,8 +92,7 @@ class VideoConverter:
         return codec not in MODERN_VIDEO_CODECS
 
     def convert_video(self, input_path: Path, output_path: Path,
-                      progress: Optional[Progress] = None,
-                      task: Optional[TaskID] = None) -> bool:
+                      progress_ctx: Optional[ProgressContext] = None) -> bool:
         """Convert video to HEVC/H.265 format in a MP4 container."""
         if self.dry_run:
             self.logger.info(f"DRY RUN: Would convert {input_path} -> {output_path}")
@@ -102,8 +131,8 @@ class VideoConverter:
                 str(temp_path),
             ]
 
-            if progress and task:
-                progress.update(task, description=f"Converting: {input_path.name}")
+            if progress_ctx:
+                progress_ctx.update(f"Converting: {input_path.name}")
 
             # Run conversion
             result = subprocess.run(cmd, capture_output=True, check=True)
@@ -152,4 +181,57 @@ class VideoConverter:
             )
 
         return info
+
+    def handle_video_conversion(self, file_path: Path, convert_videos: bool,
+                                progress_ctx: Optional[ProgressContext] = None,
+                                logger: Optional[logging.Logger] = None, 
+                                prefix: str = PROGRAM) -> ConversionResult:
+        """Handle video conversion if needed, return result object.
+        
+        Args:
+            file_path: Path to the file to potentially convert
+            convert_videos: Whether video conversion is enabled
+            progress_ctx: Optional progress context for updates
+            logger: Optional logger for conversion messages
+            prefix: Prefix for temp file names
+            
+        Returns:
+            ConversionResult with conversion details
+        """
+        # Use provided logger or fall back to class logger
+        log = logger or self.logger
+        
+        # Check if conversion needed
+        is_video = file_path.suffix.lower() in MOVIE_EXTENSIONS
+        if not (is_video and convert_videos and self.needs_conversion(file_path)):
+            return ConversionResult(source_file=file_path, processing_file=file_path)
+        
+        # Create temp file and convert
+        temp_fd, temp_path = tempfile.mkstemp(suffix=".mp4", prefix=f"{prefix}_")
+        os.close(temp_fd)
+        converted_path = Path(temp_path)
+        
+        if progress_ctx:
+            progress_ctx.update(f"Converting: {file_path.name}")
+            
+        success = self.convert_video(file_path, converted_path, progress_ctx)
+        
+        if success:
+            log.info(f"Successfully converted {file_path} -> {converted_path}")
+            return ConversionResult(
+                source_file=file_path,
+                processing_file=converted_path,
+                temp_file=converted_path,
+                was_converted=True,
+                success=True
+            )
+        else:
+            log.error(f"Failed to convert video: {file_path}")
+            return ConversionResult(
+                source_file=file_path,
+                processing_file=file_path,
+                temp_file=converted_path,
+                was_converted=True,
+                success=False
+            )
 

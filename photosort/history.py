@@ -111,7 +111,7 @@ class HistoryManager:
             f"Files: {total_files} ({stats['photos']} photos, {stats['videos']} videos, "
             f"{stats['metadata']} metadata) | "
             f"Size: {size_mb:.1f}MB | Duplicates: {stats['duplicates']} | "
-            f"Errors: {stats['errors']}{converted_info} | History: {self.import_folder_name}\n"
+            f"Unsorted: {stats['unsorted']}{converted_info} | History: {self.import_folder_name}\n"
         )
 
         # Append to imports log
