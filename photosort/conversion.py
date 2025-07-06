@@ -48,8 +48,9 @@ class ConversionResult:
 class VideoConverter:
     """Handles video format conversion using ffmpeg."""
 
-    def __init__(self, file_ops: FileOperations):
+    def __init__(self, file_ops: FileOperations, convert_videos: bool = True):
         self.file_ops = file_ops
+        self.convert_videos = convert_videos
         self.logger = get_logger("photosort.conversion")
         self.ffmpeg_available = file_ops.check_tool_availability("ffmpeg", "-version")
         self.ffprobe_available = file_ops.check_tool_availability("ffprobe", "-version")
@@ -180,14 +181,13 @@ class VideoConverter:
 
         return info
 
-    def handle_video_conversion(self, file_path: Path, convert_videos: bool,
+    def handle_video_conversion(self, file_path: Path,
                                 progress_ctx: Optional[ProgressContext] = None,
                                 prefix: str = PROGRAM) -> ConversionResult:
         """Handle video conversion if needed, return result object.
         
         Args:
             file_path: Path to the file to potentially convert
-            convert_videos: Whether video conversion is enabled
             progress_ctx: Optional progress context for updates
             prefix: Prefix for temp file names
             
@@ -197,7 +197,7 @@ class VideoConverter:
         
         # Check if conversion needed
         is_video = file_path.suffix.lower() in MOVIE_EXTENSIONS
-        if not (is_video and convert_videos and self.needs_conversion(file_path)):
+        if not (is_video and self.convert_videos and self.needs_conversion(file_path)):
             return ConversionResult(source_file=file_path, processing_file=file_path)
         
         # Create temp file and convert

@@ -290,4 +290,3 @@ class FileOperations:
             for remaining in unknowns:
                 shutil.move(remaining, unsorted_path / remaining.name)
 
-

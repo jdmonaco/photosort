@@ -22,10 +22,9 @@ from .progress import ProgressContext
 class LivePhotoProcessor:
     """Handles Apple Live Photo detection and processing."""
 
-    def __init__(self, source: Path, dest: Path, convert_videos: bool, video_converter, history_manager, file_ops, stats_manager):
+    def __init__(self, source: Path, dest: Path, video_converter, history_manager, file_ops, stats_manager):
         self.source = source
         self.dest = dest
-        self.convert_videos = convert_videos
         self.video_converter = video_converter
         self.history_manager = history_manager
         self.file_ops = file_ops
@@ -290,7 +289,7 @@ class LivePhotoProcessor:
 
             # Handle video conversion if needed
             conversion = self.video_converter.handle_video_conversion(
-                file_path, self.convert_videos, progress_ctx, "photosort_lp"
+                file_path, progress_ctx, "photosort_lp"
             )
             if not conversion.success:
                 self.stats_manager.increment_unsorted()

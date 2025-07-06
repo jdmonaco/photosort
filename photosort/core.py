@@ -75,7 +75,7 @@ class PhotoSorter:
         self.history_manager.setup_import_logger(self.logger)
 
         # Setup video converter
-        self.video_converter = VideoConverter(file_ops=self.file_ops)
+        self.video_converter = VideoConverter(file_ops=self.file_ops, convert_videos=convert_videos)
 
         # Log the start of import session
         self.logger.info(f"Starting import session: {self.source} -> {self.dest}")
@@ -88,7 +88,7 @@ class PhotoSorter:
 
         # Initialize Live Photo processor with dependencies
         self.live_photo_processor = LivePhotoProcessor(
-            source=source, dest=dest, convert_videos=convert_videos,
+            source=source, dest=dest,
             video_converter=self.video_converter, history_manager=self.history_manager,
             file_ops=self.file_ops, stats_manager=self.stats_manager
         )
@@ -323,7 +323,7 @@ class PhotoSorter:
 
         # Handle video conversion if needed
         conversion = self.video_converter.handle_video_conversion(
-            file_path, self.convert_videos, progress_ctx
+            file_path, progress_ctx
         )
         if not conversion.success:
             self.stats_manager.increment_unsorted()
