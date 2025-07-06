@@ -17,12 +17,10 @@ if TYPE_CHECKING:
 class HistoryManager:
     """Manages import history, logging, and auxiliary directory placement."""
 
-    def __init__(self, dest_path: Path, root_dir: Path, file_ops: FileOperations,
-                 dry_run: bool = False):
+    def __init__(self, dest_path: Path, root_dir: Path, file_ops: FileOperations):
         self.dest_path = dest_path
         self.file_ops = file_ops
         self.root_dir = root_dir
-        self.dry_run = dry_run
         self.history_dir = self.root_dir / "history"
         self.imports_audit_log = self.root_dir / "imports.log"
 
@@ -59,7 +57,7 @@ class HistoryManager:
 
     def setup_import_logger(self, logger: logging.Logger) -> None:
         """Configure logger to write to import-specific log file."""
-        if self.dry_run:
+        if self.file_ops.dry_run:
             return
 
         # Add file handler for import-specific logging
@@ -92,7 +90,7 @@ class HistoryManager:
 
     def log_import_summary(self, source: Path, dest: Path, stats_manager: "StatsManager", success: bool) -> None:
         """Log import summary to global imports.log."""
-        if self.dry_run:
+        if self.file_ops.dry_run:
             return
 
         # Ensure config directory exists

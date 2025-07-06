@@ -71,11 +71,11 @@ class PhotoSorter:
 
         # Setup history manager for import tracking and auxiliary directories
         self.history_manager = HistoryManager(dest_path=dest, root_dir=self.root_dir,
-                                              file_ops=self.file_ops, dry_run=dry_run)
+                                              file_ops=self.file_ops)
         self.history_manager.setup_import_logger(self.logger)
 
         # Setup video converter
-        self.video_converter = VideoConverter(file_ops=self.file_ops, dry_run=dry_run)
+        self.video_converter = VideoConverter(file_ops=self.file_ops)
 
         # Log the start of import session
         self.logger.info(f"Starting import session: {self.source} -> {self.dest}")
@@ -88,8 +88,7 @@ class PhotoSorter:
 
         # Initialize Live Photo processor with dependencies
         self.live_photo_processor = LivePhotoProcessor(
-            source=source, dest=dest, dry_run=dry_run, move_files=move_files,
-            file_mode=file_mode, group_gid=group_gid, convert_videos=convert_videos,
+            source=source, dest=dest, convert_videos=convert_videos,
             video_converter=self.video_converter, history_manager=self.history_manager,
             file_ops=self.file_ops, stats_manager=self.stats_manager
         )

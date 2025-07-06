@@ -22,25 +22,19 @@ from .progress import ProgressContext
 class LivePhotoProcessor:
     """Handles Apple Live Photo detection and processing."""
 
-    def __init__(self, source: Path, dest: Path, dry_run: bool = False,
-                 move_files: bool = True, file_mode: Optional[int] = None,
-                 group_gid: Optional[int] = None, convert_videos: bool = True,
-                 video_converter=None, history_manager=None, file_ops=None,
-                 stats_manager=None):
+    def __init__(self, source: Path, dest: Path, convert_videos: bool, video_converter, history_manager, file_ops, stats_manager):
         self.source = source
         self.dest = dest
-        self.dry_run = dry_run
-        self.move_files = move_files
-        self.file_mode = file_mode
-        self.group_gid = group_gid
         self.convert_videos = convert_videos
         self.video_converter = video_converter
         self.history_manager = history_manager
         self.file_ops = file_ops
-        self.unsorted_dir = self.history_manager.get_unsorted_dir()
-        self.legacy_dir = self.history_manager.get_legacy_videos_dir()
         self.stats_manager = stats_manager
         self.logger = get_logger()
+        
+        # Directory paths for file operations
+        self.unsorted_dir = self.history_manager.get_unsorted_dir()
+        self.legacy_dir = self.history_manager.get_legacy_videos_dir()
 
     def detect_livephoto_pairs(self, media_files: List[Path]) -> Tuple[List[Path], Dict[str, Dict]]:
         """Detect LivePhoto pairs by matching Apple ContentIdentifier keys."""

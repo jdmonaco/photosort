@@ -48,10 +48,9 @@ class ConversionResult:
 class VideoConverter:
     """Handles video format conversion using ffmpeg."""
 
-    def __init__(self, file_ops: FileOperations, dry_run: bool = False):
-        self.dry_run = dry_run
-        self.logger = get_logger("photosort.conversion")
+    def __init__(self, file_ops: FileOperations):
         self.file_ops = file_ops
+        self.logger = get_logger("photosort.conversion")
         self.ffmpeg_available = file_ops.check_tool_availability("ffmpeg", "-version")
         self.ffprobe_available = file_ops.check_tool_availability("ffprobe", "-version")
         if not self.ffmpeg_available:
@@ -93,7 +92,7 @@ class VideoConverter:
     def convert_video(self, input_path: Path, output_path: Path,
                       progress_ctx: Optional[ProgressContext] = None) -> bool:
         """Convert video to HEVC/H.265 format in a MP4 container."""
-        if self.dry_run:
+        if self.file_ops.dry_run:
             self.logger.info(f"DRY RUN: Would convert {input_path} -> {output_path}")
             return True
 
