@@ -23,8 +23,7 @@ photosort/
 ├── history.py          # Import history management (HistoryManager class)
 ├── livephoto.py        # Live Photo processing (LivePhotoProcessor class)
 ├── progress.py         # Progress tracking encapsulation (ProgressContext class)
-├── stats.py            # Statistics tracking and management (StatsManager class)
-└── utils.py            # General utility functions
+└── stats.py            # Statistics tracking and management (StatsManager class)
 ```
 
 ### Core Components
@@ -58,7 +57,7 @@ photosort/
 - **Automatic video conversion**: Legacy formats converted to H.265/MP4 with original archival
 - **Clean COPY mode**: Video conversion uses temp directory to avoid source pollution
 - **Timezone-aware video dates**: EST/EDT conversion with Live Photo compatibility
-- **macOS optimized**: Uses `sips` for photos, `ffprobe` for accurate video metadata extraction
+- **macOS optimized**: Uses `exiftool` and `sips` for photos, `ffprobe` for accurate video metadata extraction
 - **Streamlined architecture**: Encapsulated progress tracking, statistics, and configuration management
 - **Unified progress tracking**: Single progress bar for all operations with consistent updates
 
