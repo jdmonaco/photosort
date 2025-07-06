@@ -38,7 +38,7 @@ class HistoryManager:
         folder = self.history_dir / folder_name
         counter = 1
         while folder.exists() and any(folder.iterdir()):
-            folder_name = f"{folder.name}-{counter:02d}"
+            folder_name = f"{folder_name}-{counter:02d}"
             folder = self.history_dir / folder_name
             counter += 1
 
