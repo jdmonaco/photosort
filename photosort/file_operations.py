@@ -290,11 +290,4 @@ class FileOperations:
             for remaining in unknowns:
                 shutil.move(remaining, unsorted_path / remaining.name)
 
-    def update_file_stats(self, stats: dict, is_video: bool, file_size: int) -> None:
-        """Update statistics for processed files."""
-        if is_video:
-            stats['videos'] += 1
-        else:
-            stats['photos'] += 1
-        stats['total_size'] += file_size
 

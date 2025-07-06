@@ -6,9 +6,12 @@ import logging
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Dict
+from typing import Dict, TYPE_CHECKING
 
 from .file_operations import FileOperations
+
+if TYPE_CHECKING:
+    from .stats import StatsManager
 
 
 class HistoryManager:
@@ -87,7 +90,7 @@ class HistoryManager:
         """Get path for legacy video files in import history."""
         return self.import_folder / "LegacyVideos"
 
-    def log_import_summary(self, source: Path, dest: Path, stats: Dict, success: bool) -> None:
+    def log_import_summary(self, source: Path, dest: Path, stats_manager: "StatsManager", success: bool) -> None:
         """Log import summary to global imports.log."""
         if self.dry_run:
             return
@@ -98,20 +101,20 @@ class HistoryManager:
         # Format summary record
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         status = "SUCCESS" if success else "PARTIAL"
-        total_files = stats['photos'] + stats['videos'] + stats['metadata']
-        size_mb = stats['total_size'] / (1024 * 1024)
+        total_files = stats_manager.get_total_files()
+        size_mb = stats_manager.get_total_size_mb()
 
         converted_info = ""
-        if stats.get('converted_videos', 0) > 0:
-            converted_info = f" | Converted: {stats['converted_videos']} videos"
+        if stats_manager.get_converted_videos() > 0:
+            converted_info = f" | Converted: {stats_manager.get_converted_videos()} videos"
 
         summary = (
             f"{timestamp} | {status} | "
             f"Source: {source} | Dest: {dest} | "
-            f"Files: {total_files} ({stats['photos']} photos, {stats['videos']} videos, "
-            f"{stats['metadata']} metadata) | "
-            f"Size: {size_mb:.1f}MB | Duplicates: {stats['duplicates']} | "
-            f"Unsorted: {stats['unsorted']}{converted_info} | History: {self.import_folder_name}\n"
+            f"Files: {total_files} ({stats_manager.get_photos()} photos, {stats_manager.get_videos()} videos, "
+            f"{stats_manager.get_metadata()} metadata) | "
+            f"Size: {size_mb:.1f}MB | Duplicates: {stats_manager.get_duplicates()} | "
+            f"Unsorted: {stats_manager.get_unsorted()}{converted_info} | History: {self.import_folder_name}\n"
         )
 
         # Append to imports log

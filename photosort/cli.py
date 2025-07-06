@@ -380,14 +380,14 @@ def main() -> int:
             set_directory_groups(dest, group_name, console)
 
         # Log import summary to global imports.log
-        success = sorter.stats['unsorted'] == 0
-        sorter.history_manager.log_import_summary(source, dest, sorter.stats, success)
+        success = not sorter.stats_manager.has_errors()
+        sorter.history_manager.log_import_summary(source, dest, sorter.stats_manager, success)
 
         if success:
             console.print("\n[green]✓ Processing completed successfully![/green]")
             return 0
         else:
-            console.print(f"\n[yellow]⚠ Processing completed with {sorter.stats['unsorted']} errors[/yellow]")
+            console.print(f"\n[yellow]⚠ Processing completed with {sorter.stats_manager.get_unsorted()} errors[/yellow]")
             return 1
 
     except KeyboardInterrupt:

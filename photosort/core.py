@@ -31,6 +31,7 @@ from .file_operations import FileOperations
 from .history import HistoryManager
 from .livephoto import LivePhotoProcessor
 from .progress import ProgressContext
+from .stats import StatsManager
 
 
 class PhotoSorter:
@@ -50,11 +51,7 @@ class PhotoSorter:
         self.convert_videos = convert_videos
         self.root_dir = root_dir or Path.home() / f".{PROGRAM}"
         self.console = Console()
-        self.stats = {
-            'photos': 0, 'videos': 0, 'metadata': 0,
-            'duplicates': 0, 'unsorted': 0, 'total_size': 0,
-            'converted_videos': 0, 'livephoto_pairs': 0
-        }
+        self.stats_manager = StatsManager()
 
         # Setup logging with separate console and file levels
         console_handler = RichHandler(console=self.console, rich_tracebacks=True)
@@ -94,7 +91,7 @@ class PhotoSorter:
             source=source, dest=dest, dry_run=dry_run, move_files=move_files,
             file_mode=file_mode, group_gid=group_gid, convert_videos=convert_videos,
             video_converter=self.video_converter, history_manager=self.history_manager,
-            file_ops=self.file_ops, stats=self.stats
+            file_ops=self.file_ops, stats_manager=self.stats_manager
         )
 
     def _get_video_creation_date(self, file_path: Path) -> Optional[datetime]:
@@ -269,15 +266,15 @@ class PhotoSorter:
                 dest_path = self.metadata_dir / relative_path
 
                 if self.file_ops.move_file_safely(file_path, dest_path):
-                    self.stats['metadata'] += 1
+                    self.stats_manager.increment_metadata()
                 else:
-                    self.stats['unsorted'] += 1
+                    self.stats_manager.increment_unsorted()
                     if not self.dry_run:
                         self.file_ops.archive_file(file_path, self.unsorted_dir, preserve_structure=False)
 
             except Exception as e:
                 self.logger.error(f"Error processing metadata file {file_path}: {e}")
-                self.stats['unsorted'] += 1
+                self.stats_manager.increment_unsorted()
                 if not self.dry_run:
                     self.file_ops.archive_file(file_path, self.unsorted_dir, preserve_structure=False)
 
@@ -309,7 +306,7 @@ class PhotoSorter:
                 self._process_single_file(file_path, progress_ctx)
             except Exception as e:
                 self.logger.error(f"Error processing {file_path}: {e}")
-                self.stats['unsorted'] += 1
+                self.stats_manager.increment_unsorted()
                 if not self.dry_run:
                     self.file_ops.archive_file(file_path, self.unsorted_dir, preserve_structure=False)
 
@@ -330,7 +327,7 @@ class PhotoSorter:
             file_path, self.convert_videos, progress_ctx
         )
         if not conversion.success:
-            self.stats['unsorted'] += 1
+            self.stats_manager.increment_unsorted()
             self.file_ops.cleanup_failed_move(
                 conversion.source_file, conversion.processing_file,
                 conversion.temp_file, self.unsorted_dir
@@ -339,14 +336,14 @@ class PhotoSorter:
 
         # Update stats for successful conversion
         if conversion.was_converted:
-            self.stats['converted_videos'] += 1
+            self.stats_manager.increment_converted_videos()
 
         # Generate destination path based on the processing file
         dest_path, is_dupe = self.get_destination_path(conversion.processing_file, creation_date)
 
         # Gracefully cleanup if duplicates found
         if is_dupe:
-            self.stats['duplicates'] += 1
+            self.stats_manager.increment_duplicates()
             progress_ctx.update(f"Skipping duplicate: {conversion.processing_file.name}")
             self.file_ops.handle_duplicate_cleanup(conversion.source_file, conversion.temp_file)
             return
@@ -360,11 +357,10 @@ class PhotoSorter:
                 )
 
             # Update stats and progress
-            is_video = file_path.suffix.lower() in MOVIE_EXTENSIONS
-            self.file_ops.update_file_stats(self.stats, is_video, file_size)
+            self.stats_manager.record_successful_file(file_path, file_size)
             progress_ctx.update(f"Processed: {file_path.name}")
         else:
-            self.stats['unsorted'] += 1
+            self.stats_manager.increment_unsorted()
             self.file_ops.cleanup_failed_move(
                 conversion.source_file, conversion.processing_file,
                 conversion.temp_file, self.unsorted_dir
@@ -376,16 +372,16 @@ class PhotoSorter:
         table.add_column("Category", style="cyan")
         table.add_column("Count", style="green")
 
-        table.add_row("Photos", str(self.stats['photos']))
-        table.add_row("Videos", str(self.stats['videos']))
-        table.add_row("Live Photos", str(self.stats['livephoto_pairs']))
-        table.add_row("Metadata Files", str(self.stats['metadata']))
-        table.add_row("Videos Converted", str(self.stats['converted_videos']))
-        table.add_row("Duplicates Skipped", str(self.stats['duplicates']))
-        table.add_row("Unsorted", str(self.stats['unsorted']))
+        table.add_row("Photos", str(self.stats_manager.get_photos()))
+        table.add_row("Videos", str(self.stats_manager.get_videos()))
+        table.add_row("Live Photos", str(self.stats_manager.get_livephoto_pairs()))
+        table.add_row("Metadata Files", str(self.stats_manager.get_metadata()))
+        table.add_row("Videos Converted", str(self.stats_manager.get_converted_videos()))
+        table.add_row("Duplicates Skipped", str(self.stats_manager.get_duplicates()))
+        table.add_row("Unsorted", str(self.stats_manager.get_unsorted()))
 
         # Format total size
-        size_mb = self.stats['total_size'] / (1024 * 1024)
+        size_mb = self.stats_manager.get_total_size_mb()
         if size_mb > 1024:
             size_str = f"{size_mb/1024:.1f} GB"
         else:
@@ -395,6 +391,6 @@ class PhotoSorter:
         print()
         self.console.print(table)
 
-        if self.stats['unsorted'] > 0:
+        if self.stats_manager.has_errors():
             self.console.print(f"\n[red]Problematic files moved to: {self.unsorted_dir}[/red]")
 

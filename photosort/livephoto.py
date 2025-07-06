@@ -26,7 +26,7 @@ class LivePhotoProcessor:
                  move_files: bool = True, file_mode: Optional[int] = None,
                  group_gid: Optional[int] = None, convert_videos: bool = True,
                  video_converter=None, history_manager=None, file_ops=None,
-                 stats: Optional[Dict] = None):
+                 stats_manager=None):
         self.source = source
         self.dest = dest
         self.dry_run = dry_run
@@ -39,7 +39,7 @@ class LivePhotoProcessor:
         self.file_ops = file_ops
         self.unsorted_dir = self.history_manager.get_unsorted_dir()
         self.legacy_dir = self.history_manager.get_legacy_videos_dir()
-        self.stats = stats or {}
+        self.stats_manager = stats_manager
         self.logger = get_logger()
 
     def detect_livephoto_pairs(self, media_files: List[Path]) -> Tuple[List[Path], Dict[str, Dict]]:
@@ -275,14 +275,14 @@ class LivePhotoProcessor:
                 )
 
                 if success_image and success_video:
-                    self.stats['livephoto_pairs'] += 1
+                    self.stats_manager.increment_livephoto_pairs()
                     self.logger.debug(f"Successfully processed Live Photo pair: {image_file.name} + {video_file.name}")
                 else:
                     self.logger.error(f"Failed to process Live Photo pair: {image_file.name} + {video_file.name}")
 
             except Exception as e:
                 self.logger.error(f"Error processing Live Photo pair {pair_id}: {e}")
-                self.stats['unsorted'] += 2
+                self.stats_manager.increment_unsorted(2)
                 self.file_ops.archive_file(pair_data['image_file'], self.unsorted_dir, preserve_structure=False)
                 self.file_ops.archive_file(pair_data['video_file'], self.unsorted_dir, preserve_structure=False)
                 progress_ctx.advance(2)
@@ -299,7 +299,7 @@ class LivePhotoProcessor:
                 file_path, self.convert_videos, progress_ctx, "photosort_lp"
             )
             if not conversion.success:
-                self.stats['unsorted'] += 1
+                self.stats_manager.increment_unsorted()
                 self.file_ops.cleanup_failed_move(
                     conversion.source_file, conversion.processing_file,
                     conversion.temp_file, self.unsorted_dir
@@ -309,7 +309,7 @@ class LivePhotoProcessor:
 
             # Update stats for successful conversion
             if conversion.was_converted:
-                self.stats['converted_videos'] += 1
+                self.stats_manager.increment_converted_videos()
 
             # Generate destination path using shared basename
             year = f"{creation_date.year:04d}"
@@ -321,7 +321,7 @@ class LivePhotoProcessor:
 
             # Check for duplicates if the destination file already exists
             if dest_path.exists() and self.file_ops.is_duplicate(conversion.processing_file, dest_path):
-                self.stats['duplicates'] += 1
+                self.stats_manager.increment_duplicates()
                 progress_ctx.update(f"Skipping duplicate Live Photo: {conversion.processing_file.name}")
                 self.file_ops.handle_duplicate_cleanup(conversion.source_file, conversion.temp_file)
                 progress_ctx.advance()
@@ -335,13 +335,12 @@ class LivePhotoProcessor:
                         self.file_ops, self.source, self.legacy_videos_dir
                     )
 
-                is_video = file_path.suffix.lower() in MOVIE_EXTENSIONS
-                self.file_ops.update_file_stats(self.stats, is_video, file_size)
+                self.stats_manager.record_successful_file(file_path, file_size)
                 progress_ctx.update(f"Processed Live Photo: {file_path.name}")
                 progress_ctx.advance()
                 return True
             else:
-                self.stats['unsorted'] += 1
+                self.stats_manager.increment_unsorted()
                 self.file_ops.cleanup_failed_move(
                     conversion.source_file, conversion.processing_file,
                     conversion.temp_file, self.unsorted_dir
@@ -351,7 +350,7 @@ class LivePhotoProcessor:
 
         except Exception as e:
             self.logger.error(f"Error processing Live Photo file {file_path}: {e}")
-            self.stats['unsorted'] += 1
+            self.stats_manager.increment_unsorted()
             self.file_ops.archive_file(file_path, self.unsorted_dir, preserve_structure=False)
             conversion.cleanup_temp()
             progress_ctx.advance()

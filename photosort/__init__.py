@@ -20,6 +20,7 @@ from .file_operations import FileOperations
 from .history import HistoryManager
 from .livephoto import LivePhotoProcessor
 from .progress import ProgressContext
+from .stats import StatsManager
 
-__all__ = [ "main", "Config", "VideoConverter", "ConversionResult", "PhotoSorter", "HistoryManager", "LivePhotoProcessor", "FileOperations", "ProgressContext" ]
+__all__ = [ "main", "Config", "VideoConverter", "ConversionResult", "PhotoSorter", "HistoryManager", "LivePhotoProcessor", "FileOperations", "ProgressContext", "StatsManager" ]
 
