@@ -50,7 +50,7 @@ class LivePhotoProcessor:
         """Primary Live Photo detection using Apple ContentIdentifier metadata."""
         content_map = {}
         livephoto_pairs = {}
-        non_livephoto_files = []
+        non_livephoto_files = set()  # Use set to prevent duplicate entries
 
         img_ext = ('.heic', '.jpeg', '.jpg')
         mov_ext = ('.mov', '.mp4')
@@ -152,13 +152,7 @@ class LivePhotoProcessor:
                     self.logger.debug(f"Live Photo detected: {data['image'].name} + {data['video'].name}")
                 else:
                     # No valid date found, treat as individual files
-                    non_livephoto_files.extend([data['image'], data['video']])
-            else:
-                # Incomplete pair, add individual files
-                if data['image']:
-                    non_livephoto_files.append(data['image'])
-                if data['video']:
-                    non_livephoto_files.append(data['video'])
+                    non_livephoto_files.update([data['image'], data['video']])
 
         # Add files that weren't part of any Live Photo processing
         livephoto_file_paths = set()
@@ -168,15 +162,15 @@ class LivePhotoProcessor:
 
         for file_path in media_files:
             if file_path not in livephoto_file_paths:
-                non_livephoto_files.append(file_path)
+                non_livephoto_files.add(file_path)
 
-        return non_livephoto_files, livephoto_pairs
+        return sorted(non_livephoto_files), livephoto_pairs
 
     def _detect_by_basename_fallback(self, media_files: List[Path]) -> Tuple[List[Path], Dict[str, Dict]]:
         """Fallback Live Photo detection using filename basename matching."""
         basename_map = {}
         livephoto_pairs = {}
-        non_livephoto_files = []
+        non_livephoto_files = set()  # Use set to prevent duplicate entries
 
         img_ext = ('.heic', '.jpeg', '.jpg')
         mov_ext = ('.mov', '.mp4')
@@ -194,7 +188,7 @@ class LivePhotoProcessor:
                 elif ext in mov_ext:
                     basename_map[basename]['video'] = file_path
             else:
-                non_livephoto_files.append(file_path)
+                non_livephoto_files.add(file_path)
 
         # Process potential pairs
         for basename, data in basename_map.items():
@@ -215,14 +209,14 @@ class LivePhotoProcessor:
                     self.logger.debug(f"Live Photo pair detected (basename): {data['image'].name} + {data['video'].name}")
                 except Exception as e:
                     self.logger.debug(f"Failed to get creation date for {data['image']}: {e}")
-                    non_livephoto_files.extend([data['image'], data['video']])
+                    non_livephoto_files.update([data['image'], data['video']])
             else:
                 if data['image']:
-                    non_livephoto_files.append(data['image'])
+                    non_livephoto_files.add(data['image'])
                 if data['video']:
-                    non_livephoto_files.append(data['video'])
+                    non_livephoto_files.add(data['video'])
 
-        return non_livephoto_files, livephoto_pairs
+        return sorted(non_livephoto_files), livephoto_pairs
 
     def _generate_shared_basename(self, creation_date: datetime, milliseconds: int) -> str:
         """Generate shared basename for Live Photo pair using milliseconds for counter."""
@@ -249,7 +243,9 @@ class LivePhotoProcessor:
 
     def _process_pairs_with_progress(self, livephoto_pairs: Dict[str, Dict], progress_ctx) -> None:
         """Internal method to process pairs with a given progress context."""
-        for pair_id, pair_data in livephoto_pairs.items():
+        # Sort pairs by image filename for deterministic processing order
+        sorted_pairs = sorted(livephoto_pairs.items(), key=lambda x: str(x[1]['image_file']))
+        for pair_id, pair_data in sorted_pairs:
             try:
                 image_file = pair_data['image_file']
                 video_file = pair_data['video_file']

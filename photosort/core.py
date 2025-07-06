@@ -313,6 +313,11 @@ class PhotoSorter:
 
     def _process_single_file(self, file_path: Path, progress_ctx: ProgressContext) -> None:
         """Process a single media file."""
+        # Check if file still exists before processing
+        if not file_path.exists():
+            self.logger.debug(f"Skipping {file_path} - file no longer exists (already processed)")
+            return
+            
         # Get file size before any operations
         file_size = file_path.stat().st_size
 
