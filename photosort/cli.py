@@ -9,6 +9,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from typing import Optional
 
 from rich.console import Console
 from rich.progress import Progress
@@ -219,9 +220,13 @@ Examples:
     return parser
 
 
-def main() -> int:
-    """Main entry point."""
-    config = Config()
+def main(config_path: Optional[Path] = None) -> int:
+    """Main entry point.
+    
+    Args:
+        config_path: Optional path to config file (for testing)
+    """
+    config = Config(config_path=config_path)
     parser = create_parser(config)
     args = parser.parse_args()
 
