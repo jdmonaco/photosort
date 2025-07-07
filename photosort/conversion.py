@@ -4,6 +4,7 @@ Video conversion functionality using ffmpeg.
 
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -23,7 +24,7 @@ class ConversionResult:
     temp_file: Optional[Path] = None  # Temp file to clean up
     was_converted: bool = False
     success: bool = True
-    
+
     def cleanup_temp(self) -> None:
         """Clean up temporary file if it exists."""
         if self.temp_file and self.temp_file.exists():
@@ -31,16 +32,16 @@ class ConversionResult:
                 self.temp_file.unlink()
             except Exception:
                 pass
-    
-    def handle_conversion_cleanup(self, file_ops: FileOperations, source_root: Path, 
+
+    def handle_conversion_cleanup(self, file_ops: FileOperations, source_root: Path,
                                   legacy_dir: Path) -> None:
         """Handle cleanup after video conversion, archiving originals and removing temp files."""
         if not self.was_converted:
             return
-        
+
         # Archive original video
         file_ops.archive_file(self.source_file, legacy_dir, preserve_structure=True, source_root=source_root)
-        
+
         # Clean up temp converted video file
         self.cleanup_temp()
 
@@ -185,31 +186,31 @@ class VideoConverter:
                                 progress_ctx: Optional[ProgressContext] = None,
                                 prefix: str = PROGRAM) -> ConversionResult:
         """Handle video conversion if needed, return result object.
-        
+
         Args:
             file_path: Path to the file to potentially convert
             progress_ctx: Optional progress context for updates
             prefix: Prefix for temp file names
-            
+
         Returns:
             ConversionResult with conversion details
         """
-        
+
         # Check if conversion needed
         is_video = file_path.suffix.lower() in MOVIE_EXTENSIONS
         if not (is_video and self.convert_videos and self.needs_conversion(file_path)):
             return ConversionResult(source_file=file_path, processing_file=file_path)
-        
+
         # Create temp file and convert
         temp_fd, temp_path = tempfile.mkstemp(suffix=".mp4", prefix=f"{prefix}_")
         os.close(temp_fd)
         converted_path = Path(temp_path)
-        
+
         if progress_ctx:
             progress_ctx.update(f"Converting: {file_path.name}")
-            
+
         success = self.convert_video(file_path, converted_path, progress_ctx)
-        
+
         if success:
             self.logger.info(f"Successfully converted {file_path} -> {converted_path}")
             return ConversionResult(
