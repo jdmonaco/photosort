@@ -64,7 +64,7 @@ photosort/
 ## Package Management
 
 - **UV-compatible**: Defined in `pyproject.toml` with proper dependencies
-- **Tool installation**: `uv tool install .` creates isolated environment
+- **Tool installation**: `uv tool install .` creates isolated environment (add `--editable` for development)
 - **Dependencies**: `rich` (UI), `pyyaml` (config)
 - **Entry point**: `photosort` command runs `photosort.cli:main`
 
@@ -74,11 +74,14 @@ photosort/
 # Install in development mode
 uv sync
 
-# Run from source
-uv run photosort --help
+# Run from source (if photosort is available on PATH)
+photosort --help
+
+# Run from source via uv (if photosort not available on PATH)
+uv tool run photosort --help
 
 # Install as tool
-uv tool install .
+uv tool install --editable .
 
 # Run tests
 uv run pytest
@@ -319,9 +322,61 @@ Video conversion uses a unified tempfile approach for both COPY and MOVE modes t
 ### Timezone Configuration
 - `--timezone, --tz`: Default timezone for creation time metadata (saves as new default)
 
+### Safety and Confirmation
+- `--yes, -y`: Auto-confirm processing when using saved source/dest paths (bypasses confirmation prompt)
+
 ### Other Options
 - `--verbose, -v`: Enable debug logging to import.log
 - `--help`: Shows dynamic help with current configured defaults
+
+## CLI Behavior and Safety Features
+
+### Processing Plan Display
+Photosort always displays a comprehensive Processing Plan before execution, showing:
+- Source and destination paths
+- Processing mode (MOVE, COPY, or DRY RUN)
+- Video conversion setting
+- Timezone setting
+- File mode and group ownership (if configured)
+
+Example Processing Plan:
+```
+Processing Plan:
+  Source:          /Users/dev/Downloads/Photos
+  Destination:     /Users/dev/Pictures/Organized
+  Processing Mode: MOVE
+  Convert Videos:  Yes
+  Timezone:        America/New_York
+  File Mode:       644
+  Group:           staff
+```
+
+### Confirmation Prompt for Saved Configuration
+When photosort is run with no arguments (using saved source/destination paths), it displays a confirmation prompt:
+
+```
+Confirm processing plan with saved configuration.
+Continue? [y/N]: 
+```
+
+This safety feature prevents accidental processing with forgotten or outdated saved configuration.
+
+#### Bypassing Confirmation
+- Use `--yes` or `-y` flag to automatically confirm and skip the prompt
+- Explicit source/destination arguments never trigger confirmation
+- Useful for automation and scripting
+
+#### Examples
+```bash
+# Shows confirmation prompt
+$ photosort
+
+# Bypasses confirmation
+$ photosort --yes
+
+# No confirmation needed (explicit paths)
+$ photosort ~/Downloads ~/Pictures
+```
 
 ## Public API (`photosort.__init__.py`)
 

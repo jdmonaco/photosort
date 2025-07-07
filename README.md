@@ -58,8 +58,11 @@ uv run photosort --help
 # First run - specify source and destination
 photosort ~/Downloads/Photos ~/Pictures/Organized
 
-# Subsequent runs - uses remembered paths
+# Subsequent runs - uses remembered paths (shows confirmation prompt)
 photosort
+
+# Auto-confirm with remembered paths (no prompt)
+photosort --yes
 
 # Override remembered paths
 photosort --source ~/Desktop/NewPhotos --dest ~/Pictures/Archive
@@ -130,6 +133,7 @@ The completion script is saved to `~/.photosort/completion.bash` and sourced fro
 - `--copy`, `-c`: Copy files instead of moving them (default is to move)
 - `--verbose`, `-v`: Enable detailed logging
 - `--version`, `-V`: Display version number and exit (use with `--verbose` for detailed info)
+- `--yes`, `-y`: Auto-confirm processing when using saved configuration (bypasses confirmation prompt)
 - `--install-completion`: Install bash completion script to ~/.bashrc
 
 #### File Ownership
@@ -141,6 +145,57 @@ The completion script is saved to `~/.photosort/completion.bash` and sourced fro
 
 #### Timezone Configuration
 - `--timezone`, `--tz`: Set default timezone for video metadata (e.g., "America/New_York", "Europe/London")
+
+## Safety Features
+
+### Processing Plan Display
+
+Photosort always shows a comprehensive Processing Plan before execution, displaying:
+- Source and destination paths
+- Processing mode (MOVE, COPY, or DRY RUN)
+- Video conversion setting
+- Timezone setting
+- File mode and group ownership (if configured)
+
+Example:
+```
+Processing Plan:
+  Source:          /Users/dev/Downloads/Photos
+  Destination:     /Users/dev/Pictures/Organized
+  Processing Mode: MOVE
+  Convert Videos:  Yes
+  Timezone:        America/New_York
+  File Mode:       644
+  Group:           staff
+```
+
+### Confirmation Prompt
+
+When photosort is run with no arguments (using saved source/destination paths), it displays a safety confirmation:
+
+```
+Confirm processing plan with saved configuration.
+Continue? [y/N]: 
+```
+
+This prevents accidental processing with forgotten or outdated saved configuration.
+
+**Bypassing Confirmation:**
+- Use `--yes` or `-y` flag to automatically confirm and skip the prompt
+- Explicit source/destination arguments never trigger confirmation  
+- Useful for automation and scripting
+
+**Examples:**
+```bash
+# Shows confirmation prompt
+photosort
+
+# Bypasses confirmation prompt
+photosort --yes
+
+# No confirmation needed (explicit paths)
+photosort ~/Downloads ~/Pictures
+```
 
 ## File Organization
 

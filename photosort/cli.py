@@ -181,16 +181,16 @@ Examples:
         help="Override destination directory"
     )
     parser.add_argument(
+        "--yes", "-y", action="store_true",
+        help="Auto-confirm processing for saved source/dest paths"
+    )
+    parser.add_argument(
         "--dry-run", "-n", action="store_true",
         help="Preview operations without making changes"
     )
     parser.add_argument(
         "--copy", "-c", action="store_true",
         help="Copy files instead of moving them"
-    )
-    parser.add_argument(
-        "--verbose", "-v", action="store_true",
-        help="Enable verbose logging"
     )
     parser.add_argument(
         "--mode", "-m", type=str, metavar="MODE",
@@ -209,6 +209,10 @@ Examples:
         help=video_help
     )
     parser.add_argument(
+        "--verbose", "-v", action="store_true",
+        help="Enable verbose logging"
+    )
+    parser.add_argument(
         "--version", "-V", action="store_true",
         help=version_help
     )
@@ -220,15 +224,50 @@ Examples:
     return parser
 
 
+def show_processing_plan(source: Path, dest: Path, dry_run: bool, copy_mode: bool,
+                         convert_videos: bool, file_mode: Optional[str],
+                         group: Optional[str], timezone: str, console: Console) -> None:
+    """Display the processing plan before execution."""
+    mode = "DRY RUN" if dry_run else ("COPY" if copy_mode else "MOVE")
+
+    console.print("\n[bold]Processing Plan:[/bold]")
+    console.print(f"  Source:          [blue]{source}[/blue]")
+    console.print(f"  Destination:     [blue]{dest}[/blue]")
+    console.print(f"  Processing Mode: [cyan]{mode}[/cyan]")
+    console.print(f"  Convert Videos:  [cyan]{'Yes' if convert_videos else 'No'}[/cyan]")
+    console.print(f"  Timezone:        [cyan]{timezone}[/cyan]")
+    if file_mode:
+        console.print(f"  File Mode:       [cyan]{file_mode}[/cyan]")
+    if group:
+        console.print(f"  Group:           [cyan]{group}[/cyan]")
+    console.print()  # Empty line for readability
+
+
+def confirm_processing(console: Console) -> bool:
+    """Ask for confirmation when using saved configuration."""
+    console.print("[yellow]Confirm processing plan with saved configuration.[/yellow]")
+
+    try:
+        response = console.input("Continue? [y/N]: ").strip().lower()
+        return response in ['y', 'yes']
+    except (EOFError, KeyboardInterrupt):
+        console.print("\n[red]Operation cancelled[/red]")
+        return False
+
+
 def main(config_path: Optional[Path] = None) -> int:
     """Main entry point.
-    
+
     Args:
         config_path: Optional path to config file (for testing)
     """
     config = Config(config_path=config_path)
     parser = create_parser(config)
     args = parser.parse_args()
+
+    # Detect if running with no positional arguments (using saved config)
+    using_saved_config = args.source is None and args.dest is None and \
+                         args.source_override is None and args.dest_override is None
 
     # Handle version option
     if args.version:
@@ -267,7 +306,7 @@ def main(config_path: Optional[Path] = None) -> int:
         return 1
 
     if source == dest or source in dest.parents or dest in source.parents:
-        print("Error: Separate import/target folders are required:")
+        print("Error: Identical or overlapping source/dest folders:")
         print(f" - Source:      {source}")
         print(f" - Destination: {dest}")
         return 1
@@ -319,6 +358,27 @@ def main(config_path: Optional[Path] = None) -> int:
     if args.verbose:
         get_logger().setLevel(logging.DEBUG)
 
+    # Create console early for output
+    console = Console()
+
+    # Always show processing plan (except for --help which exits early)
+    show_processing_plan(
+        source=source,
+        dest=dest,
+        dry_run=args.dry_run,
+        copy_mode=args.copy,
+        convert_videos=convert_videos,
+        file_mode=args.mode or config.get_file_mode(),
+        group=args.group or config.get_group(),
+        timezone=timezone,
+        console=console
+    )
+
+    # Show confirmation when using saved config without --yes flag
+    if using_saved_config and not args.yes:
+        if not confirm_processing(console):
+            return 0  # Exit gracefully
+
     # Create sorter and process files
     sorter = PhotoSorter(
         source=source,
@@ -331,14 +391,6 @@ def main(config_path: Optional[Path] = None) -> int:
         timezone=timezone,
         convert_videos=convert_videos
     )
-
-    console = Console()
-
-    if args.dry_run:
-        console.print("[yellow]DRY RUN - No files will be moved[/yellow]")
-
-    console.print(f"Source:      [blue]{source}[/blue]")
-    console.print(f"Destination: [blue]{dest}[/blue]")
 
     # Find and process files
     media_files, metadata_files, livephoto_pairs = sorter.find_source_files()

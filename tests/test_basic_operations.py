@@ -95,7 +95,7 @@ class TestBasicOperations:
         )
         
         # Verify output indicates dry run
-        assert "DRY RUN - No files will be moved" in result.output
+        assert "Processing Mode: DRY RUN" in result.output
         assert result.exit_code == 0
         
         # Verify no files were moved
@@ -142,7 +142,7 @@ class TestBasicOperations:
         )
         
         assert result.exit_code == 1
-        assert "Separate import/target folders are required" in result.output
+        assert "Identical or overlapping source/dest folders" in result.output
         
         # Test destination inside source
         nested_dest = temp_source_folder / "organized"
@@ -153,7 +153,7 @@ class TestBasicOperations:
         )
         
         assert result.exit_code == 1
-        assert "Separate import/target folders are required" in result.output
+        assert "Identical or overlapping source/dest folders" in result.output
         
         # Test source inside destination
         parent_dest = temp_source_folder.parent
@@ -164,7 +164,7 @@ class TestBasicOperations:
         )
         
         assert result.exit_code == 1
-        assert "Separate import/target folders are required" in result.output
+        assert "Identical or overlapping source/dest folders" in result.output
     
     def test_empty_source_directory(self, cli_runner, tmp_path, test_config_path):
         """Test handling of empty source directory."""
