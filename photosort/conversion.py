@@ -141,7 +141,7 @@ class VideoConverter:
                 raise FileNotFoundError("Conversion produced no output")
 
             # Move temp file to final location and restore original timestamps
-            temp_path.rename(output_path)
+            shutil.move(str(temp_path), str(output_path))
             os.utime(output_path, (original_stat.st_atime, original_stat.st_mtime))
 
             self.logger.info(f"{input_path} -> {output_path}")

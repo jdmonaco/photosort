@@ -265,7 +265,7 @@ class FileOperations:
             self.ensure_directory(dest_path.parent)
 
             if self.move_files:
-                file_path.rename(dest_path)
+                shutil.move(str(file_path), str(dest_path))
             else:
                 shutil.copy2(str(file_path), str(dest_path))
 
