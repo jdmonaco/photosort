@@ -53,8 +53,23 @@ def test_config_base(tmp_path_factory):
 
 @pytest.fixture
 def test_config_path(test_config_base):
-    """Test-specific config path."""
-    return test_config_base / "config.yml"
+    """Test-specific config path with clean state guarantee."""
+    config_path = test_config_base / "config.yml"
+    
+    # Ensure clean state - remove config if it exists
+    if config_path.exists():
+        config_path.unlink()
+    
+    # Also clean any residual history or import logs
+    history_dir = test_config_base / "history"
+    imports_log = test_config_base / "imports.log"
+    
+    if history_dir.exists():
+        shutil.rmtree(history_dir)
+    if imports_log.exists():
+        imports_log.unlink()
+    
+    return config_path
 
 
 @pytest.fixture

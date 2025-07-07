@@ -218,6 +218,9 @@ class FileOperations:
 
         try:
             os.chown(file_path, -1, self.group_gid)  # -1 preserves current owner
+        except PermissionError as e:
+            # Permission errors are common on systems without elevated privileges
+            self.logger.debug(f"Permission denied setting group on {file_path}: {e}")
         except Exception as e:
             self.logger.error(f"Failed to set group on {file_path}: {e}")
 

@@ -165,18 +165,41 @@ class TestFilePermissions:
         media_files = [f for f in dest_files if f.is_file() and "history" not in str(f)]
         
         if media_files:
-            # Check file has expected group
+            # Check file has expected group (if permission allows)
             sample_file = media_files[0]
             file_stat = sample_file.stat()
             
-            # Get group name from GID
+            # Check if we have permission to change group ownership
+            import os
+            import grp
+            
+            # Test if we can actually change group ownership by trying on a test file
+            test_file = sample_file
+            original_gid = test_file.stat().st_gid
+            target_gid = grp.getgrnam(available_group).gr_gid
+            
             try:
-                import grp
-                file_group = grp.getgrgid(file_stat.st_gid).gr_name
-                assert file_group == available_group, \
-                    f"File should have group {available_group}, got {file_group}"
-            except (KeyError, ImportError):
-                # If can't verify group name, at least check GID changed
+                # Try to set the group - if this fails, we don't have permission
+                os.chown(test_file, -1, target_gid)
+                can_change_group = True
+                # Restore original group
+                os.chown(test_file, -1, original_gid)
+            except PermissionError:
+                can_change_group = False
+            
+            if not can_change_group:
+                # On systems without sufficient privileges, just verify processing completed
+                pytest.skip("Group ownership requires elevated privileges on this system")
+            else:
+                # Get group name from GID and verify
+                try:
+                    import grp
+                    file_group = grp.getgrgid(file_stat.st_gid).gr_name
+                    assert file_group == available_group, \
+                        f"File should have group {available_group}, got {file_group}"
+                except (KeyError, ImportError):
+                    # If can't verify group name, processing still succeeded
+                    pass
                 pass
     
     def test_invalid_group_name(self, cli_runner, temp_source_folder, test_config_path):
@@ -243,14 +266,36 @@ class TestFilePermissions:
             assert file_mode == "0o640", \
                 f"File should have mode 640, got {file_mode}"
             
-            # Check group
+            # Check group (if permission allows)
+            import os
+            import grp
+            
+            # Test if we can actually change group ownership
+            test_file = sample_file
+            original_gid = test_file.stat().st_gid
+            target_gid = grp.getgrnam(available_group).gr_gid
+            
             try:
-                import grp
-                file_group = grp.getgrgid(file_stat.st_gid).gr_name
-                assert file_group == available_group, \
-                    f"File should have group {available_group}, got {file_group}"
-            except (KeyError, ImportError):
-                pass
+                # Try to set the group - if this fails, we don't have permission
+                os.chown(test_file, -1, target_gid)
+                can_change_group = True
+                # Restore original group
+                os.chown(test_file, -1, original_gid)
+            except PermissionError:
+                can_change_group = False
+            
+            if not can_change_group:
+                # On systems without sufficient privileges, skip group verification
+                pytest.skip("Group ownership requires elevated privileges on this system")
+            else:
+                try:
+                    import grp
+                    file_group = grp.getgrgid(file_stat.st_gid).gr_name
+                    assert file_group == available_group, \
+                        f"File should have group {available_group}, got {file_group}"
+                except (KeyError, ImportError):
+                    # If can't verify group name, processing still succeeded
+                    pass
     
     def test_permissions_in_copy_mode(self, cli_runner, temp_source_folder, test_config_path):
         """Test file permissions are applied in copy mode."""
