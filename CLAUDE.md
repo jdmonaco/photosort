@@ -136,7 +136,6 @@ Output structure: `YYYY/MM/YYYY-MM-DD_HH-MM-SS.ext`
 - `LivePhotoProcessor.detect_livephoto_pairs()`: Main detection orchestrator
 - `LivePhotoProcessor._detect_by_content_identifier()`: Primary ContentIdentifier-based detection
 - `LivePhotoProcessor._detect_by_basename_fallback()`: Fallback Live Photo detection using filename basenames
-- `LivePhotoProcessor._parse_livephoto_date()`: Extracts creation date with millisecond precision
 - `LivePhotoProcessor._generate_shared_basename()`: Creates shared basenames for Live Photo pairs
 - `LivePhotoProcessor.process_livephoto_pairs()`: Processes detected pairs with shared basenames
 - `LivePhotoProcessor._process_livephoto_file()`: Individual file processing with predetermined basename
@@ -153,6 +152,7 @@ Output structure: `YYYY/MM/YYYY-MM-DD_HH-MM-SS.ext`
 - `FileOperations.is_duplicate()`: Advanced duplicate detection with size/hash comparison
 - `FileOperations.same_size_same_hash()`: SHA-256 hash comparison for same-sized files
 - `FileOperations.move_file_safely()`: File movement with validation and permission setting
+- `FileOperations._parse_EXIF_creation_dates()`: Extracts EXIF creation date with millisecond precision
 - `FileOperations.image_creation_date()`: Image metadata extraction using sips with fallback
 - `FileOperations.apply_file_permissions()`: Sets file permissions based on mode
 - `FileOperations.apply_file_group()`: Sets group ownership based on GID
