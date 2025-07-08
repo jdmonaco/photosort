@@ -64,10 +64,10 @@ class LivePhotoProcessor:
 
         # Call exiftool for content id and dates for all possible candidate files
         exif_data = []
-        
+
         # Process files in batches to reduce subprocess overhead
         batch_size = 100  # Process 100 files at a time
-        
+
         # Create progress bar for EXIF scanning
         console = Console()
         with Progress(console=console) as progress:
@@ -75,11 +75,11 @@ class LivePhotoProcessor:
                 f"[cyan]Scanning {len(lp_candidates)} files for Live Photos...[/cyan]",
                 total=len(lp_candidates)
             )
-            
+
             # Process files in batches
             for i in range(0, len(lp_candidates), batch_size):
                 batch = lp_candidates[i:i + batch_size]
-                
+
                 # Call exiftool with multiple files at once
                 cmd = [
                     "exiftool",
@@ -95,14 +95,14 @@ class LivePhotoProcessor:
                 ]
                 # Add all files in batch to command
                 cmd.extend(str(f) for f in batch)
-                
+
                 result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-                
+
                 # Parse JSON output - will be a list of objects, one per file
                 json_data = json.loads(result.stdout)
                 if isinstance(json_data, list):
                     exif_data.extend(json_data)
-                
+
                 # Update progress for the batch
                 progress.update(scan_task, advance=len(batch))
 
@@ -307,8 +307,8 @@ class LivePhotoProcessor:
             ext = self.file_ops.normalize_jpg_extension(ext)
             dest_path = dest_dir / f"{shared_basename}{ext}"
 
-            # Check for duplicates if the destination file already exists
-            if dest_path.exists() and self.file_ops.is_duplicate(conversion.processing_file, dest_path):
+            # Check for duplicate file at destination path
+            if self.file_ops.is_duplicate(conversion.processing_file, dest_path):
                 self.stats_manager.increment_duplicates()
                 progress_ctx.update(f"Skipping duplicate Live Photo: {conversion.processing_file.name}")
                 self.file_ops.handle_duplicate_cleanup(conversion.source_file, conversion.temp_file)

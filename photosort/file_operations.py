@@ -3,6 +3,7 @@ Shared file operations and utilities for photo and video organization.
 """
 
 import hashlib
+import json
 import os
 import shutil
 import subprocess
@@ -132,8 +133,9 @@ class FileOperations:
 
     def _parse_EXIF_dates(self, dates: Dict[str, str]) -> Tuple[Optional[datetime], int]:
         """Parse EXIF image creation date with millisecond precision (if available)."""
-        # Priority: SubSecCreateDate > CreationDate > CreateDate
-        for date_field in ['SubSecCreateDate', 'CreationDate', 'CreateDate']:
+        # Check original/creation date-time tags in priority order
+        for date_field in ['SubSecCreateDate', 'CreationDate', 'CreateDate',
+                           'ProfileDateTime', 'DateTimeOriginal']:
             if date_field in dates:
                 date_str = dates[date_field]
                 try:
@@ -169,16 +171,20 @@ class FileOperations:
                     "-CreateDate",
                     "-CreationDate",
                     "-SubSecCreateDate",
+                    "-ProfileDateTime",
+                    "-DateTimeOriginal",
                     str(image_path)],
-                    capture_output=True, text=True, check=True)
+                    capture_output=True, text=True, check=True
+                )
 
                 # Parse JSON output and process creation date tags in order
                 exif_data = json.loads(result.stdout)
                 if isinstance(exif_data, list) and len(exif_data) > 0:
-                    creation_date, milliseconds = self._parse_EXIF_dates(exif_data[0])
+                    creation_date, _ = self._parse_EXIF_dates(exif_data[0])
                     if creation_date:
                         return creation_date
-            except (subprocess.CalledProcessError, Exception):
+
+            except subprocess.CalledProcessError:
                 pass
 
         if self.sips_available:
@@ -192,10 +198,13 @@ class FileOperations:
                 # Parse sips output
                 for line in result.stdout.split('\n'):
                     if 'creation:' in line:
-                        date_str = line.split('creation: ')[1].strip()
-                        return datetime.strptime(date_str, "%Y:%m:%d %H:%M:%S")
+                        try:
+                            date_str = line.split('creation: ')[1].strip()
+                            return datetime.strptime(date_str, "%Y:%m:%d %H:%M:%S")
+                        except ValueError:
+                            break
 
-            except (subprocess.CalledProcessError, Exception):
+            except subprocess.CalledProcessError:
                 pass
 
         # Fallback to file modification time for photos
