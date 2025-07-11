@@ -16,12 +16,12 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from rich.console import Console
 from rich.logging import RichHandler
 from rich.progress import Progress
 from rich.table import Table
 
 from .config import Config
+from .console import console
 from .constants import (
     JPG_EXTENSIONS, METADATA_EXTENSIONS, MOVIE_EXTENSIONS,
     PHOTO_EXTENSIONS, PROGRAM, VALID_EXTENSIONS, get_logger
@@ -50,11 +50,10 @@ class PhotoSorter:
         self.timezone = timezone
         self.convert_videos = convert_videos
         self.root_dir = root_dir or Path.home() / f".{PROGRAM}"
-        self.console = Console()
         self.stats_manager = StatsManager()
 
         # Setup logging with separate console and file levels
-        console_handler = RichHandler(console=self.console, rich_tracebacks=True)
+        console_handler = RichHandler(console=console, rich_tracebacks=True)
         console_handler.setLevel(logging.WARNING)  # Only WARNING and ERROR to console
         console_handler.setFormatter(logging.Formatter("%(message)s"))
         logging.basicConfig(
@@ -291,7 +290,7 @@ class PhotoSorter:
 
         # If no progress context provided, create our own
         if progress_ctx is None:
-            with Progress(console=self.console) as progress:
+            with Progress(console=console) as progress:
                 task = progress.add_task("Processing files...", total=len(files))
                 progress_ctx = ProgressContext(progress, task)
                 self._process_files_with_progress(files, progress_ctx)
@@ -317,7 +316,7 @@ class PhotoSorter:
         if not file_path.exists():
             self.logger.debug(f"Skipping {file_path} - file no longer exists (already processed)")
             return
-            
+
         # Get file size before any operations
         file_size = file_path.stat().st_size
 
@@ -393,8 +392,8 @@ class PhotoSorter:
         table.add_row("Total Size", size_str)
 
         print()
-        self.console.print(table)
+        console.print(table)
 
         if self.stats_manager.has_errors():
-            self.console.print(f"\n[red]Problematic files moved to: {self.unsorted_dir}[/red]")
+            console.print(f"\n[red]Problematic files moved to: {self.unsorted_dir}[/red]")
 

@@ -11,10 +11,10 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from rich.console import Console
 from rich.progress import Progress
 
 from .config import Config
+from .console import console
 from .constants import PROGRAM, get_logger
 from .core import PhotoSorter
 from .progress import ProgressContext
@@ -39,7 +39,7 @@ def parse_group(group_str: str) -> int:
         raise argparse.ArgumentTypeError(f"Group '{group_str}' not found on system")
 
 
-def set_directory_groups(dest_path: Path, group_name: str, console: Console) -> None:
+def set_directory_groups(dest_path: Path, group_name: str) -> None:
     """Set group ownership on all directories in destination path."""
     try:
         result = subprocess.run(
@@ -53,8 +53,6 @@ def set_directory_groups(dest_path: Path, group_name: str, console: Console) -> 
 
 def install_bash_completion() -> int:
     """Install bash completion script to user's environment."""
-    console = Console()
-
     # Get the completion script content from package data
     try:
         # Use modern Python approach (3.9+) with fallback
@@ -226,7 +224,7 @@ Examples:
 
 def show_processing_plan(source: Path, dest: Path, dry_run: bool, copy_mode: bool,
                          convert_videos: bool, file_mode: Optional[str],
-                         group: Optional[str], timezone: str, console: Console) -> None:
+                         group: Optional[str], timezone: str) -> None:
     """Display the processing plan before execution."""
     mode = "DRY RUN" if dry_run else ("COPY" if copy_mode else "MOVE")
 
@@ -243,7 +241,7 @@ def show_processing_plan(source: Path, dest: Path, dry_run: bool, copy_mode: boo
     console.print()  # Empty line for readability
 
 
-def confirm_processing(console: Console) -> bool:
+def confirm_processing() -> bool:
     """Ask for confirmation when using saved configuration."""
     console.print("[yellow]Confirm processing plan with saved configuration.[/yellow]")
 
@@ -358,9 +356,6 @@ def main(config_path: Optional[Path] = None) -> int:
     if args.verbose:
         get_logger().setLevel(logging.DEBUG)
 
-    # Create console early for output
-    console = Console()
-
     # Always show processing plan (except for --help which exits early)
     show_processing_plan(
         source=source,
@@ -370,13 +365,12 @@ def main(config_path: Optional[Path] = None) -> int:
         convert_videos=convert_videos,
         file_mode=args.mode or config.get_file_mode(),
         group=args.group or config.get_group(),
-        timezone=timezone,
-        console=console
+        timezone=timezone
     )
 
     # Show confirmation when using saved config without --yes flag
     if using_saved_config and not args.yes:
-        if not confirm_processing(console):
+        if not confirm_processing():
             return 0  # Exit gracefully
 
     # Create sorter and process files
@@ -434,7 +428,7 @@ def main(config_path: Optional[Path] = None) -> int:
         # Apply group to directories if specified
         if group_gid is not None and not args.dry_run:
             group_name = config.get_group() or args.group
-            set_directory_groups(dest, group_name, console)
+            set_directory_groups(dest, group_name)
 
         # Log import summary to global imports.log
         success = True  # Processing completed successfully (unsorted files are normal)

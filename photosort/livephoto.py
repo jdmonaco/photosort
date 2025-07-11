@@ -11,9 +11,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from rich.console import Console
 from rich.progress import Progress
 
+from .console import console
 from .constants import JPG_EXTENSIONS, MOVIE_EXTENSIONS, PROGRAM, get_logger
 from .conversion import ConversionResult
 from .progress import ProgressContext
@@ -69,7 +69,6 @@ class LivePhotoProcessor:
         batch_size = 100  # Process 100 files at a time
 
         # Create progress bar for EXIF scanning
-        console = Console()
         with Progress(console=console) as progress:
             scan_task = progress.add_task(
                 f"[cyan]Scanning {len(lp_candidates)} files for Live Photos...[/cyan]",
@@ -233,7 +232,6 @@ class LivePhotoProcessor:
 
         # If no progress context provided, create our own
         if progress_ctx is None:
-            console = Console()
             with Progress(console=console) as progress:
                 task = progress.add_task("Processing Live Photos...", total=len(livephoto_pairs) * 2)
                 progress_ctx = ProgressContext(progress, task)
