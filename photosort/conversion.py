@@ -11,7 +11,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
-from .constants import MODERN_VIDEO_CODECS, MOVIE_EXTENSIONS, PROGRAM, get_logger
+from .constants import (get_logger, ffmpeg_available, ffprobe_available,
+                        MODERN_VIDEO_CODECS, MOVIE_EXTENSIONS, PROGRAM)
 from .file_operations import FileOperations
 from .progress import ProgressContext
 
@@ -25,26 +26,6 @@ class ConversionResult:
     was_converted: bool = False
     success: bool = True
 
-    def cleanup_temp(self) -> None:
-        """Clean up temporary file if it exists."""
-        if self.temp_file and self.temp_file.exists():
-            try:
-                self.temp_file.unlink()
-            except Exception:
-                pass
-
-    def handle_conversion_cleanup(self, file_ops: FileOperations, source_root: Path,
-                                  legacy_dir: Path) -> None:
-        """Handle cleanup after video conversion, archiving originals and removing temp files."""
-        if not self.was_converted:
-            return
-
-        # Archive original video
-        file_ops.archive_file(self.source_file, legacy_dir, preserve_structure=True, source_root=source_root)
-
-        # Clean up temp converted video file
-        self.cleanup_temp()
-
 
 class VideoConverter:
     """Handles video format conversion using ffmpeg."""
@@ -53,14 +34,12 @@ class VideoConverter:
         self.file_ops = file_ops
         self.convert_videos = convert_videos
         self.logger = get_logger("photosort.conversion")
-        self.ffmpeg_available = file_ops.check_tool_availability("ffmpeg", "-version")
-        self.ffprobe_available = file_ops.check_tool_availability("ffprobe", "-version")
-        if not self.ffmpeg_available:
+        if not ffmpeg_available:
             self.logger.warning("ffmpeg unavailable: skipping legacy video conversion")
 
     def get_video_codec(self, video_path: Path) -> Optional[str]:
         """Extract video codec information using ffprobe."""
-        if self.ffprobe_available:
+        if ffprobe_available:
             try:
                 result = subprocess.run(
                     [
@@ -83,7 +62,7 @@ class VideoConverter:
 
         return None
 
-    def needs_conversion(self, video_path: Path) -> bool:
+    def _needs_conversion(self, video_path: Path) -> bool:
         """Check if video needs conversion to modern format."""
         codec = self.get_video_codec(video_path)
         if codec is None:
@@ -91,15 +70,55 @@ class VideoConverter:
 
         return codec not in MODERN_VIDEO_CODECS
 
+    def get_content_identifier(self, video_path: Path) -> Optional[str]:
+        """Extract Apple ContentIdentifer tag using ffprobe."""
+        if ffprobe_available:
+            try:
+                result = subprocess.run(
+                    [
+                        "ffprobe",
+                        "-v", "quiet",
+                        "-print_format", "json",
+                        "-show_entries", "format_tags",
+                        str(video_path),
+                    ],
+                    capture_output=True, text=True, check=True,
+                )
+
+                data = json.loads(result.stdout)
+                if data.get("format", {}).get("tags", {}):
+                    content_id = data["format"]["tags"]["com.apple.quicktime.content.identifier"]
+                    self.logger.debug(f"Found {video_path.name}:ContentIdentifier = {content_id}")
+                    return content_id
+            except (subprocess.CalledProcessError, json.JSONDecodeError, KeyError):
+                pass
+
+        return None
+
+    def _content_id_preserved(self, orig_file: Path, conv_file: Path) -> bool:
+        """Verify that ContentIdentifier metadata was preserved."""
+        orig_id = self.get_content_identifier(orig_file)
+        conv_id = self.get_content_identifier(conv_file)
+
+        if orig_id:
+            if conv_id and orig_id == conv_id:
+                return True
+            else:
+                self.logger.warning(f"Conversion did not preserve ContentIdentifier for {orig_file}")
+        else:
+            return True  # nothing to preserve
+
+        return False
+
     def convert_video(self, input_path: Path, output_path: Path,
                       progress_ctx: Optional[ProgressContext] = None) -> bool:
         """Convert video to HEVC/H.265 format in a MP4 container."""
+        if not ffmpeg_available:
+            return False
+
         if self.file_ops.dry_run:
             self.logger.info(f"DRY RUN: Would convert {input_path} -> {output_path}")
             return True
-
-        if not self.ffmpeg_available:
-            return False
 
         # Create output directory
         self.file_ops.ensure_directory(output_path.parent)
@@ -120,12 +139,13 @@ class VideoConverter:
                 "-ac", "2",                 # Stereo audio
                 "-ar", "48000",             # 48kHz sample rate
                 "-preset", "medium",        # Encoding speed/quality balance
-                "-movflags", "+faststart",  # Optimize for streaming
-                "-map_metadata", "0:g",     # Global metadata only
+                "-movflags", "+faststart",  # Enable streaminpg
+                "-movflags", "+use_metadata_tags", # Preserve Apple Live Photo metadata
+                "-map_metadata", "0:g",     # Preserve global metadata
                 "-metadata:s:v", "encoder=libx265",
                 "-metadata:s:a", "encoder=aac",
                 "-pix_fmt", "yuv420p",      # QuickTime/macOS compatibility
-                "-crf", "28",               # Quality setting (lower = better quality)
+                "-crf", "26",               # Quality setting (lower = better quality)
                 "-tag:v", "hvc1",           # Correct fourCC code for H.265/MP4
                 "-y",                       # Overwrite output
                 str(temp_path),
@@ -141,6 +161,10 @@ class VideoConverter:
             if not temp_path.exists() or temp_path.stat().st_size == 0:
                 raise FileNotFoundError("Conversion produced no output")
 
+            # Verify that Apple ContentIdentifier tags were preserved
+            if not self._content_id_preserved(input_path, temp_path):
+                raise ValueError("Apple ContentIdentifier tag not preserved")
+
             # Move temp file to final location and restore original timestamps
             shutil.move(str(temp_path), str(output_path))
             os.utime(output_path, (original_stat.st_atime, original_stat.st_mtime))
@@ -155,32 +179,7 @@ class VideoConverter:
             self.logger.error(f"Conversion error for {input_path}: {e}")
             return False
         finally:
-            if temp_path.exists():
-                try:
-                    temp_path.unlink()
-                except Exception:
-                    pass
-
-    def get_conversion_info(self, input_path: Path, output_path: Path) -> Dict[str, str]:
-        """Get information about the conversion that will be performed."""
-        original_codec = self.get_video_codec(input_path) or "unknown"
-        original_size = input_path.stat().st_size
-
-        info = {
-            "original_codec": original_codec,
-            "target_codec": "h265",
-            "original_size": f"{original_size / (1024*1024):.1f} MB",
-            "container": "mp4",
-        }
-
-        if output_path.exists():
-            converted_size = output_path.stat().st_size
-            info["converted_size"] = f"{converted_size / (1024*1024):.1f} MB"
-            info["size_reduction"] = (
-                f"{((original_size - converted_size) / original_size * 100):.1f}%"
-            )
-
-        return info
+            self.file_ops.delete_safely(temp_path)
 
     def handle_video_conversion(self, file_path: Path,
                                 progress_ctx: Optional[ProgressContext] = None,
@@ -198,7 +197,7 @@ class VideoConverter:
 
         # Check if conversion needed
         is_video = file_path.suffix.lower() in MOVIE_EXTENSIONS
-        if not (is_video and self.convert_videos and self.needs_conversion(file_path)):
+        if not (is_video and self.convert_videos and self._needs_conversion(file_path)):
             return ConversionResult(source_file=file_path, processing_file=file_path)
 
         # Create temp file and convert
@@ -213,20 +212,14 @@ class VideoConverter:
 
         if success:
             self.logger.info(f"Successfully converted {file_path} -> {converted_path}")
-            return ConversionResult(
-                source_file=file_path,
-                processing_file=converted_path,
-                temp_file=converted_path,
-                was_converted=True,
-                success=True
-            )
         else:
             self.logger.error(f"Failed to convert video: {file_path}")
-            return ConversionResult(
-                source_file=file_path,
-                processing_file=file_path,
-                temp_file=converted_path,
-                was_converted=True,
-                success=False
-            )
+
+        return ConversionResult(
+            source_file=file_path,
+            processing_file=converted_path if success else file_path,
+            temp_file=converted_path,
+            was_converted=True,
+            success=success
+        )
 

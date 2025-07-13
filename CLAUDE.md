@@ -16,14 +16,15 @@ photosort/
 ├── __init__.py          # Package init with public API
 ├── cli.py              # Command-line interface and main entry point
 ├── config.py           # Configuration management (Config class)
-├── constants.py        # File extension constants, program metadata, and centralized logger
+├── constants.py        # File extension constants, program metadata, centralized logger, and shared utilities
 ├── conversion.py       # Video format conversion using ffmpeg (VideoConverter class, ConversionResult)
 ├── core.py             # Core photo sorting logic (PhotoSorter class)
 ├── file_operations.py  # Shared file operations and utilities (FileOperations class)
 ├── history.py          # Import history management (HistoryManager class)
 ├── livephoto.py        # Live Photo processing (LivePhotoProcessor class)
 ├── progress.py         # Progress tracking encapsulation (ProgressContext class)
-└── stats.py            # Statistics tracking and management (StatsManager class)
+├── stats.py            # Statistics tracking and management (StatsManager class)
+└── timestamps.py       # Centralized date/time parsing and timezone handling
 ```
 
 ### Core Components
@@ -37,7 +38,8 @@ photosort/
 - **`photosort.livephoto.LivePhotoProcessor`**: Specialized Live Photo detection and processing
 - **`photosort.progress.ProgressContext`**: Unified progress tracking for all operations
 - **`photosort.stats.StatsManager`**: Centralized statistics tracking and management
-- **`photosort.constants`**: File extension definitions, program metadata, and centralized logger utility
+- **`photosort.constants`**: File extension definitions, program metadata, centralized logger utility, and shared functions
+- **`photosort.timestamps`**: Centralized date/time parsing, timezone conversion, and EXIF metadata extraction
 - **`photosort.utils`**: Source directory cleanup and general utilities
 - **Rich UI**: Progress bars, tables, and colored console output
 
@@ -125,9 +127,7 @@ Output structure: `YYYY/MM/YYYY-MM-DD_HH-MM-SS.ext`
 - `PhotoSorter.process_files()`: Main media file processing with progress tracking
 - `PhotoSorter.process_livephoto_pairs()`: Delegates Live Photo processing to LivePhotoProcessor
 - `PhotoSorter.process_metadata_files()`: Handles metadata files separately
-- `PhotoSorter.get_creation_date()`: Timezone-aware date extraction for photos and videos
-- `PhotoSorter._get_video_creation_date()`: JSON-based ffprobe parsing with EST/EDT conversion
-- `PhotoSorter._parse_iso8601_to_est()`: ISO 8601 timestamp parsing with timezone conversion
+- `PhotoSorter.get_creation_date()`: Timezone-aware date extraction delegating to timestamps module
 - `PhotoSorter.get_destination_path()`: Generates timestamped destination paths
 
 ### File Discovery (`photosort.core`)
@@ -155,26 +155,22 @@ Output structure: `YYYY/MM/YYYY-MM-DD_HH-MM-SS.ext`
 - `FileOperations.is_duplicate()`: Advanced duplicate detection with size/hash comparison
 - `FileOperations.same_size_same_hash()`: SHA-256 hash comparison for same-sized files
 - `FileOperations.move_file_safely()`: File movement with validation and permission setting
-- `FileOperations._parse_EXIF_creation_dates()`: Extracts EXIF creation date with millisecond precision
-- `FileOperations.image_creation_date()`: Image metadata extraction using sips with fallback
 - `FileOperations.apply_file_permissions()`: Sets file permissions based on mode
 - `FileOperations.apply_file_group()`: Sets group ownership based on GID
 - `FileOperations.ensure_directory()`: Creates directories safely with dry-run support
 - `FileOperations.archive_file()`: Generic archival method with path preservation options
-- `FileOperations.handle_duplicate_cleanup()`: Manages cleanup when duplicates detected
-- `FileOperations.cleanup_failed_move()`: Cleanup when file move fails
+- `FileOperations.create_unique_path()`: Generates unique file paths with counter if needed
+- `FileOperations.delete_safely()`: Safe file deletion supporting multiple files via *args
 - `FileOperations.cleanup_source_directory()`: Post-processing source cleanup
 - `FileOperations.normalize_jpg_extension()`: Standardizes JPG file extensions
-- `FileOperations.check_tool_availability()`: System tool availability checking
 
 ### Video Conversion (`photosort.conversion`)
-- `VideoConverter.needs_conversion()`: Detects non-modern codec videos requiring conversion
-- `VideoConverter.convert_video()`: H.265/MP4 conversion with libx265, CRF 28, AAC audio
+- `VideoConverter._needs_conversion()`: Detects non-modern codec videos requiring conversion (private method)
+- `VideoConverter.convert_video()`: H.265/MP4 conversion with libx265, CRF 26, AAC audio
 - `VideoConverter.get_video_codec()`: Extract video codec using ffprobe for format detection
-- `VideoConverter.get_conversion_info()`: Provides conversion details and size reduction metrics
+- `VideoConverter.get_content_identifier()`: Extract Apple ContentIdentifier tag using ffprobe
+- `VideoConverter._content_id_preserved()`: Verify ContentIdentifier metadata preservation after conversion
 - `VideoConverter.handle_video_conversion()`: Unified conversion workflow returning ConversionResult
-- `ConversionResult.cleanup_temp()`: Cleanup temporary files after conversion
-- `ConversionResult.handle_conversion_cleanup()`: Archive originals and cleanup after conversion
 - **Encapsulated configuration**: VideoConverter handles convert_videos setting internally
 - **Unified conversion approach**: All conversions use temp directory regardless of mode
 
@@ -200,6 +196,17 @@ Output structure: `YYYY/MM/YYYY-MM-DD_HH-MM-SS.ext`
 - `METADATA_EXTENSIONS`: Metadata file extensions
 - `NUISANCE_EXTENSIONS`: System files to remove during cleanup
 - `get_logger()`: Centralized logger utility for consistent logging across modules
+- `get_console()`: Shared Rich Console instance for consistent UI across modules
+- `check_tool_availability()`: System tool availability checking utility
+- **Tool availability constants**: `ffmpeg_available`, `ffprobe_available`, `exiftool_available`, `sips_available`
+
+### Date/Time Processing (`photosort.timestamps`)
+- `get_image_creation_date()`: Extract creation date from images using exiftool, sips, or file stat
+- `get_video_creation_date()`: Extract creation date from video metadata with Apple QuickTime priority
+- `canonical_EXIF_date()`: Parse EXIF image creation date with millisecond precision and priority handling
+- `parse_iso8601_datetime()`: Parse ISO 8601 date-time strings with timezone awareness and conversion
+- **Centralized timezone handling**: Module-level timezone configuration with fallback to "America/New_York"
+- **Performance optimization**: Batch EXIF processing for improved speed
 
 ### Progress Tracking (`photosort.progress`)
 - `ProgressContext.update()`: Update progress description if tracking is active
@@ -391,6 +398,7 @@ The package exports these key classes and functions:
 - `photosort.StatsManager`: Statistics tracking and management class
 - `photosort.ProgressContext`: Progress tracking encapsulation class
 - `photosort.ConversionResult`: Video conversion result dataclass
+- **New modules**: `photosort.timestamps` with date/time parsing functions and `photosort.constants` with shared utilities
 
 ### Usage Examples
 
@@ -415,16 +423,17 @@ sorter.process_files(media_files)
 
 ### Module Dependencies
 - `cli.py` → `config.py`, `core.py`, `constants.py`, `progress.py`
-- `core.py` → `constants.py`, `config.py`, `file_operations.py`, `history.py`, `livephoto.py`, `conversion.py`, `progress.py`, `stats.py`
+- `core.py` → `constants.py`, `config.py`, `file_operations.py`, `history.py`, `livephoto.py`, `conversion.py`, `progress.py`, `stats.py`, `timestamps.py`
+- `timestamps.py` → `constants.py`, `config.py` (centralized date/time parsing with timezone handling)
 - `file_operations.py` → `constants.py` (central utility used by multiple modules)
-- `livephoto.py` → `constants.py`, `conversion.py`, `progress.py` (with streamlined dependency injection)
+- `livephoto.py` → `constants.py`, `conversion.py`, `progress.py`, `timestamps.py` (with streamlined dependency injection)
 - `history.py` → `file_operations.py` (uses FileOperations for directory creation)
 - `conversion.py` → `constants.py`, `file_operations.py`, `progress.py`
 - `config.py` → `constants.py` (only system modules + yaml)
 - `utils.py` → `constants.py`, `file_operations.py`
 - `progress.py` → standalone (no dependencies)
 - `stats.py` → `constants.py`
-- `constants.py` → standalone (no dependencies)
+- `constants.py` → standalone (shared utilities and tool availability constants)
 
 ## Test Suite Implementation
 
@@ -547,16 +556,33 @@ The script will scan your media files and create a curated test directory with d
 - **Progress customization**: Extend `ProgressContext` for specialized progress tracking
 - **Plugin system**: Future enhancement for custom processing pipelines
 
-### Recent Streamlining Improvements (2024)
-The codebase has undergone significant architectural improvements to reduce complexity and improve maintainability:
+### Recent Architectural Improvements (2024)
+The codebase has undergone significant refactoring to improve modularity, reduce duplication, and enhance maintainability:
 
-1. **Progress Tracking Consolidation**: Created unified `ProgressContext` class to replace scattered progress parameters across methods
-2. **Video Conversion Streamlining**: Introduced `ConversionResult` dataclass to encapsulate conversion operations and cleanup logic
-3. **Centralized Logging**: Added `get_logger()` utility in constants module to eliminate redundant logger instantiation across modules
-4. **Statistics Encapsulation**: Created `StatsManager` class to centralize all statistics tracking and eliminate stats dictionary passing
-5. **Configuration Simplification**: Moved `convert_videos` setting into `VideoConverter` constructor for better encapsulation
-6. **Archive Method Consolidation**: Created generic `archive_file()` method to replace specialized archival functions
-7. **Dependency Reduction**: Reduced LivePhotoProcessor constructor parameters from 11 to 5 through better dependency organization
-8. **Parameter Passing Optimization**: Eliminated redundant config parameter propagation through method chains
+#### **Timestamp Processing Extraction**
+1. **New `timestamps.py` Module**: Created dedicated module for all date/time parsing functionality
+   - Moved `get_image_creation_date()` and `get_video_creation_date()` from other modules
+   - Consolidated EXIF parsing with new `canonical_EXIF_date()` function
+   - Centralized ISO 8601 parsing with `parse_iso8601_datetime()`
+   - Module-level timezone configuration with proper fallback handling
 
-These improvements reduced code duplication by approximately 200+ lines while maintaining full functionality and improving code organization.
+#### **Shared Utilities Consolidation**
+2. **Enhanced `constants.py` Module**: Centralized shared utilities and tool availability
+   - Added `get_console()` function for shared Rich Console instance (removed separate `console.py`)
+   - Added `check_tool_availability()` moved from `FileOperations` class
+   - Module-level tool availability constants for performance optimization
+   - Eliminated redundant tool checking across modules
+
+#### **Class and Method Refinements**
+3. **FileOperations Simplification**: Removed timestamp-related methods moved to `timestamps.py`
+4. **VideoConverter Enhancements**: Added ContentIdentifier preservation verification methods
+5. **Core Processing Streamlining**: Simplified by delegating timestamp extraction to dedicated module
+6. **LivePhotoProcessor Updates**: Uses centralized EXIF parsing from `timestamps.py`
+
+#### **Performance and Maintainability**
+7. **Progress Tracking Consolidation**: Unified `ProgressContext` class for consistent progress handling
+8. **Statistics Encapsulation**: `StatsManager` class centralizes all metrics tracking
+9. **Tool Availability Optimization**: Check external tools once at module load time vs. repeatedly
+10. **Dependency Reduction**: Cleaner module boundaries with reduced inter-module dependencies
+
+These improvements reduced code duplication by approximately 186 lines while enhancing modularity, performance, and maintainability. The extraction of timestamp processing into a dedicated module significantly improves code organization and testability.

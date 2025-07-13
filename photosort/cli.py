@@ -14,10 +14,12 @@ from typing import Optional
 from rich.progress import Progress
 
 from .config import Config
-from .console import console
-from .constants import PROGRAM, get_logger
+from .constants import get_console, get_logger, PROGRAM
 from .core import PhotoSorter
 from .progress import ProgressContext
+
+
+console = get_console()
 
 
 def parse_file_mode(mode_str: str) -> int:
@@ -291,8 +293,8 @@ def main(config_path: Optional[Path] = None) -> int:
     if not source_path or not dest_path:
         parser.error("Source and destination directories are required")
 
-    source = Path(source_path).expanduser().resolve()
-    dest = Path(dest_path).expanduser().resolve()
+    source = Path(source_path.strip()).expanduser().resolve()
+    dest = Path(dest_path.strip()).expanduser().resolve()
 
     # Validate paths
     if not source.exists():

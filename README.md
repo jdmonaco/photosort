@@ -14,7 +14,7 @@ A modern Python tool for organizing photos and videos into a clean year/month fo
 - **Duplicate Detection**: Intelligent deduplication based on file size and content hashing
 - **Smart Video Conversion**: Converts legacy formats to H.265/MP4 with clean COPY mode operation
 - **Source Preservation**: COPY mode uses temp directory for conversion, leaves source untouched
-- **Timezone-Aware Dates**: EST/EDT conversion for accurate video timestamps and Live Photo compatibility
+- **Timezone-Aware Dates**: Centralized date/time parsing with configurable timezone handling
 - **macOS Optimized**: Uses native `sips` for photos, `ffprobe` for accurate video metadata extraction
 
 ### Advanced Features
@@ -25,6 +25,7 @@ A modern Python tool for organizing photos and videos into a clean year/month fo
 - **Safe Operations**: Moves files with validation and ownership control
 - **Progress Tracking**: Rich progress bars and detailed reporting
 - **Remembers Settings**: Stores all preferences (paths, permissions, groups) with dynamic help
+- **Optimized Performance**: Centralized tool availability checking and improved module architecture
 
 ## Installation
 
