@@ -1,43 +1,30 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Manual completion installation script for photosort
 # This can be used if the --install-completion option doesn't work
+set -eu
 
-COMPLETION_DIR="$(dirname "$0")/../photosort/completion"
-COMPLETION_FILE="$COMPLETION_DIR/photosort-completion.bash"
-PHOTOSORT_DIR="$HOME/.photosort"
-COMPLETION_DEST="$PHOTOSORT_DIR/completion.bash"
+# Set script and link paths
+PHOTOSORT_DIR="$(dirname "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")")"
+PHOTOSORT_COMPL_FILE="$PHOTOSORT_DIR/data/completion.bash"
+LOCAL_COMPL_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions"
+LOCAL_COMPL_LINK="$LOCAL_COMPL_DIR/photosort"
 
-echo "Installing photosort bash completion..."
-
-# Check if completion file exists
-if [[ ! -f "$COMPLETION_FILE" ]]; then
-    echo "Error: Completion file not found at $COMPLETION_FILE"
+# Verify completion script path
+if [[ ! -f "$PHOTOSORT_COMPL_FILE" ]]; then
+    echo "Error: Completion file not found: $PHOTOSORT_COMPL_FILE" >&2
     exit 1
 fi
 
-# Create photosort config directory
-mkdir -p "$PHOTOSORT_DIR"
+# Ensure completions directory exists
+echo "Installing photosort completion script..."
+mkdir -pv "$LOCAL_COMPL_DIR" || true
 
-# Copy completion script to ~/.photosort/completion.bash
-cp "$COMPLETION_FILE" "$COMPLETION_DEST"
+# Link completion script
+ln -sfv "$PHOTOSORT_COMPL_FILE" "$LOCAL_COMPL_LINK"
 
-# Install to ~/.bashrc
-BASHRC="$HOME/.bashrc"
-MARKER_START="# >>> photosort completion >>>"
-MARKER_END="# <<< photosort completion <<<"
-
-# Check if already installed
-if [[ -f "$BASHRC" ]] && grep -q "$MARKER_START" "$BASHRC"; then
-    echo "Photosort completion already installed in ~/.bashrc"
-    exit 0
-fi
-
-# Add source line to .bashrc
-echo "" >> "$BASHRC"
-echo "$MARKER_START" >> "$BASHRC"
-echo "[ -r $COMPLETION_DEST ] && source $COMPLETION_DEST" >> "$BASHRC"
-echo "$MARKER_END" >> "$BASHRC"
-
-echo "✓ Completion script saved to $COMPLETION_DEST"
-echo "✓ Bash completion installed to ~/.bashrc"
-echo "Run 'source ~/.bashrc' or restart your terminal to enable completion"
+# Summary
+echo ""
+echo "✅ Completion script linked:"
+echo "    $LOCAL_COMPL_LINK"
+echo ""
+echo "Source ~/.bashrc or restart terminal to enable completion."
