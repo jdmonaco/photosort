@@ -5,11 +5,11 @@ build-backend = "hatchling.build"
 [project]
 name = "photosort"
 version = "2.0.0"
-description = "Organize photos and videos into year/month folder structure based on creation date"
+description = "Organize photos and videos"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
-    {name = "Photosort Contributors"}
+    {name = "Joseph Monaco"}
 ]
 requires-python = ">=3.8"
 dependencies = [
@@ -45,10 +45,10 @@ include = [
 ]
 
 [project.urls]
-Repository = "https://github.com/your-username/photosort"
+Repository = "https://github.com/jdmonaco/photosort"
 
-[tool.uv]
-dev-dependencies = [
+[dependency-groups]
+dev = [
     "pytest>=7.0.0",
     "black>=22.0.0",
     "mypy>=1.0.0",
