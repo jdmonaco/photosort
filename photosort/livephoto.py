@@ -87,6 +87,7 @@ class LivePhotoProcessor:
                     "exiftool",
                     "-q",
                     "-json",
+                    "-d", "%Y-%m-%dT%H:%M:%S%3f%z",
                     "-api", "QuickTimeUTC",
                     "-ContentIdentifier",
                     "-LivePhotoAuto",

@@ -40,7 +40,6 @@ photosort/
 - **`photosort.stats.StatsManager`**: Centralized statistics tracking and management
 - **`photosort.constants`**: File extension definitions, program metadata, centralized logger utility, and shared functions
 - **`photosort.timestamps`**: Centralized date/time parsing, timezone conversion, and EXIF metadata extraction
-- **`photosort.utils`**: Source directory cleanup and general utilities
 - **Rich UI**: Progress bars, tables, and colored console output
 
 ### Key Features
@@ -183,11 +182,6 @@ Output structure: `YYYY/MM/YYYY-MM-DD_HH-MM-SS.ext`
 - `Config.get_timezone()`: Retrieves saved timezone setting
 - `Config.update_timezone()`: Saves timezone preference
 
-### Utilities (`photosort.utils`)
-- `cleanup_source_directory()`: Post-processing source cleanup
-- Removes empty directories and nuisance files
-- Moves unknown files to history directory
-
 ### Constants (`photosort.constants`)
 - `PROGRAM`: Centralized program name constant for consistent naming
 - `PHOTO_EXTENSIONS`: Supported photo file extensions (includes GIF, TIFF formats)
@@ -305,7 +299,7 @@ Video conversion uses a unified tempfile approach for both COPY and MOVE modes t
 ### Conversion Process
 1. **Codec Detection**: Uses ffprobe to identify non-modern video codecs
 2. **Temp File Creation**: Creates temporary converted file using system temp directory
-3. **H.265 Encoding**: Converts with libx265, CRF 28 quality, AAC audio
+3. **H.265 Encoding**: Converts with libx265, CRF 26 quality, AAC audio
 4. **Metadata Preservation**: Maintains creation dates and global metadata
 5. **Atomic Move**: Moves converted file from temp to destination
 6. **Cleanup**: Archives original and removes temp files
@@ -430,7 +424,6 @@ sorter.process_files(media_files)
 - `history.py` → `file_operations.py` (uses FileOperations for directory creation)
 - `conversion.py` → `constants.py`, `file_operations.py`, `progress.py`
 - `config.py` → `constants.py` (only system modules + yaml)
-- `utils.py` → `constants.py`, `file_operations.py`
 - `progress.py` → standalone (no dependencies)
 - `stats.py` → `constants.py`
 - `constants.py` → standalone (shared utilities and tool availability constants)
@@ -443,7 +436,7 @@ The photosort project includes a comprehensive pytest-based test suite that cond
 - **Real Media Testing**: Tests use real media files with actual EXIF metadata for authentic behavior
 - **Test Isolation**: Each test uses a separate temporary config directory to avoid interference
 - **CLI Integration**: Tests simulate actual command-line usage through subprocess-style execution
-- **Comprehensive Coverage**: 58 tests across 6 modules covering all major functionality
+- **Comprehensive Coverage**: 61 tests across 6 modules covering all major functionality
 
 ### Test Structure
 ```
@@ -451,7 +444,7 @@ tests/
 ├── conftest.py                     # Core fixtures and test infrastructure
 ├── create_test_media.py           # Script for generating test media directory
 ├── test_basic_operations.py       # Move/copy/dry-run modes and validation (9 tests)
-├── test_configuration.py          # Config persistence and defaults (12 tests)
+├── test_configuration.py          # Config persistence and defaults (15 tests)
 ├── test_file_organization.py      # Date structure and file handling (8 tests)
 ├── test_livephoto_processing.py   # Live Photo detection and processing (8 tests)
 ├── test_video_conversion.py       # H.265 conversion and archival (9 tests)

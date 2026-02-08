@@ -314,7 +314,7 @@ This ensures tests run with real-world file characteristics while keeping the te
 
 ### Test Coverage
 
-The test suite includes 58 tests across 6 modules:
+The test suite includes 61 tests across 6 modules:
 - **Basic Operations**: Move/copy modes, validation, argument handling
 - **Configuration**: Settings persistence, defaults, validation
 - **File Organization**: Date structure, naming, duplicates, cleanup

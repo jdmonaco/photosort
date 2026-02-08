@@ -98,16 +98,21 @@ def canonical_EXIF_date(dates: Dict[str, str]) -> Optional[datetime]:
 
 
 def parse_iso8601_datetime(timestamp_str: str) -> Optional[datetime]:
-    """Parse ISO 8601 date-time string with timezone awareness."""
-    # Handle various ISO 8601 formats
-    # Examples: "2025-05-06T19:41:34-0400", "2025-05-06T23:41:35.000000Z"
-    iso_pattern = r'(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:?\d{2})?'
-    match = re.match(iso_pattern, timestamp_str)
+    """Parse ISO 8601 or EXIF date-time string with timezone awareness.
+
+    Handles both ISO 8601 (2025-05-06T19:41:34-0400) and raw EXIF
+    (2025:05:06 19:41:34.745-04:00) date formats.
+    """
+    # Pattern handles ISO 8601 (dash dates, T separator) and
+    # raw EXIF format (colon dates, space separator)
+    pattern = r'(\d{4}[-:]\d{2}[-:]\d{2})[T ](\d{2}:\d{2}:\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:?\d{2})?'
+    match = re.match(pattern, timestamp_str)
 
     if not match:
         return None
 
-    date_part = match.group(1)
+    # Normalize colon-separated dates (EXIF format) to dash-separated
+    date_part = match.group(1).replace(':', '-')
     time_part = match.group(2)
     fractional_part = match.group(3)
     timezone_part = match.group(4)
