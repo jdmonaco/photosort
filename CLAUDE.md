@@ -68,6 +68,7 @@ photosort/
 - **Tool installation**: `uv tool install .` creates isolated environment (add `--editable` for development)
 - **Dependencies**: `rich` (UI), `pyyaml` (config)
 - **Entry point**: `photosort` command runs `photosort.cli:main`
+- **Repository**: Primary on Forgejo (`forge.joemona.co`), auto-push mirror to GitHub (`github.com/jdmonaco/photosort`). No need to push to GitHub manually.
 
 ## Development Commands
 
