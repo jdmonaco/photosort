@@ -7,7 +7,7 @@ into a clean year/month directory structure based on file creation dates.
 Created with the assistance of Claude Code. MIT License.
 """
 
-__version__ = "2.1.0"
+__version__ = "2.1.1"
 __copyright__ = "Copyright (c) 2025 Joe Monaco (joe@selfmotion.net)"
 
 
