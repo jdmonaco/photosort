@@ -263,8 +263,10 @@ class LivePhotoProcessor:
 
         collision_suffix = 0
         while img_dest.exists() or vid_dest.exists():
-            # If existing image is a duplicate of our source, the pair is a dupe
-            if img_dest.exists() and self.file_ops.is_duplicate(image_file, img_dest):
+            # Only treat as duplicate pair if both sides match
+            img_is_dupe = img_dest.exists() and self.file_ops.is_duplicate(image_file, img_dest)
+            vid_is_dupe = vid_dest.exists() and self.file_ops.is_duplicate(video_file, vid_dest)
+            if img_is_dupe and (vid_is_dupe or not vid_dest.exists()):
                 break
             collision_suffix += 1
             adjusted = f"{shared_basename}_{collision_suffix:02d}"
