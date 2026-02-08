@@ -45,7 +45,7 @@ uv run photosort --help
 
 Clone and install in development mode:
 ```bash
-git clone ssh://git@forge.joemona.co:2222/joe/photosort.git
+git clone https://github.com/jdmonaco/photosort.git
 cd photosort
 uv sync
 uv run photosort --help
