@@ -15,7 +15,7 @@ A modern Python tool for organizing photos and videos into a clean year/month fo
 - **Smart Video Conversion**: Converts legacy formats to H.265/MP4 with clean COPY mode operation
 - **Source Preservation**: COPY mode uses temp directory for conversion, leaves source untouched
 - **Timezone-Aware Dates**: Centralized date/time parsing with configurable timezone handling
-- **macOS Optimized**: Uses native `sips` for photos, `ffprobe` for accurate video metadata extraction
+- **macOS Optimized**: Uses `exiftool` for EXIF metadata with `sips` fallback, `ffprobe` for video metadata
 
 ### Advanced Features
 - **File Permissions**: Set custom file permissions (e.g., 644, 600) with persistent defaults
