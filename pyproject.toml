@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "photosort"
-version = "2.1.1"
+dynamic = ["version"]
 description = "Organize photos and videos"
 readme = "README.md"
 license = {text = "MIT"}
@@ -33,6 +33,9 @@ classifiers = [
     "Topic :: System :: Archiving",
     "Topic :: Utilities",
 ]
+
+[tool.hatch.version]
+path = "photosort/__init__.py"
 
 [project.scripts]
 photosort = "photosort.cli:main"
