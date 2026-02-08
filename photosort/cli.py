@@ -384,7 +384,6 @@ def main(config_path: Optional[Path] = None) -> int:
         move_files=not args.copy,
         file_mode=file_mode,
         group_gid=group_gid,
-        timezone=timezone,
         convert_videos=convert_videos
     )
 

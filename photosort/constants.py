@@ -75,9 +75,6 @@ VALID_EXTENSIONS = PHOTO_EXTENSIONS + MOVIE_EXTENSIONS
 
 # Video codecs
 MODERN_VIDEO_CODECS = (
-    "hevc", "h265", "av1", "vp9"
-)
-LEGACY_VIDEO_CODECS = (
-    "avc", "h264"
+    "hevc", "h265", "h264", "avc", "av1", "vp9"
 )
 

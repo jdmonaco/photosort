@@ -36,7 +36,7 @@ class FileOperations:
 
     @staticmethod
     def is_duplicate(source_file: Path, dest_file: Path,
-                     hash_size: Optional[int] = 10) -> bool:
+                     hash_size: Optional[int] = None) -> bool:
         """Check if files are duplicates based on size and content."""
         if not dest_file.exists():
             return False
@@ -242,5 +242,6 @@ class FileOperations:
             self.logger.info(f"Moving {len(unknowns)} unknown files...")
             self.ensure_directory(unsorted_path)
             for remaining in unknowns:
-                shutil.move(remaining, unsorted_path / remaining.name)
+                dest_path = self.create_unique_path(unsorted_path, remaining)
+                shutil.move(remaining, dest_path)
 

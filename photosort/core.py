@@ -36,14 +36,13 @@ class PhotoSorter:
     def __init__(self, source: Path, dest: Path, root_dir: Optional[Path],
                  dry_run: bool = False, move_files: bool = True,
                  file_mode: Optional[int] = None, group_gid: Optional[int] = None,
-                 timezone: str = "America/New_York", convert_videos: bool = True):
+                 convert_videos: bool = True):
         self.source = source
         self.dest = dest
         self.dry_run = dry_run
         self.move_files = move_files
         self.file_mode = file_mode
         self.group_gid = group_gid
-        self.timezone = timezone
         self.convert_videos = convert_videos
         self.root_dir = root_dir or Path.home() / f".{PROGRAM}"
         self.stats_manager = StatsManager()
@@ -139,9 +138,8 @@ class PhotoSorter:
         while dest_file.exists():
             if self.file_ops.is_duplicate(file_path, dest_file):
                 return dest_file, True
-
-            dest_file = dest_dir / f"{timestamp}_{counter:03d}{ext}"
             counter += 1
+            dest_file = dest_dir / f"{timestamp}_{counter:03d}{ext}"
 
         return dest_file, False
 

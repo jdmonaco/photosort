@@ -139,8 +139,7 @@ class VideoConverter:
                 "-ac", "2",                 # Stereo audio
                 "-ar", "48000",             # 48kHz sample rate
                 "-preset", "medium",        # Encoding speed/quality balance
-                "-movflags", "+faststart",  # Enable streaminpg
-                "-movflags", "+use_metadata_tags", # Preserve Apple Live Photo metadata
+                "-movflags", "+faststart+use_metadata_tags",  # Streaming + Apple metadata
                 "-map_metadata", "0:g",     # Preserve global metadata
                 "-metadata:s:v", "encoder=libx265",
                 "-metadata:s:a", "encoder=aac",

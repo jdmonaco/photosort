@@ -52,7 +52,8 @@ class TestFileOrganization:
         assert result.exit_code == 0
         
         # Check all output files match expected format
-        pattern = r'^\d{8}_\d{6}_\d{3}\.\w+$'
+        # Allows optional _NN collision suffix for Live Photo pairs
+        pattern = r'^\d{8}_\d{6}_\d{3}(_\d{2})?\.\w+$'
         import re
         
         for file_path in dest_path.rglob("*"):

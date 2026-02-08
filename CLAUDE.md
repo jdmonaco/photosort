@@ -186,7 +186,7 @@ Output structure: `YYYY/MM/YYYY-MM-DD_HH-MM-SS.ext`
 - `PROGRAM`: Centralized program name constant for consistent naming
 - `PHOTO_EXTENSIONS`: Supported photo file extensions (includes GIF, TIFF formats)
 - `MOVIE_EXTENSIONS`: Supported video file extensions
-- `MODERN_VIDEO_CODECS`: Video codecs that don't need conversion (h264, h265, av1)
+- `MODERN_VIDEO_CODECS`: Video codecs that don't need conversion (hevc, h265, h264, avc, av1, vp9)
 - `METADATA_EXTENSIONS`: Metadata file extensions
 - `NUISANCE_EXTENSIONS`: System files to remove during cleanup
 - `get_logger()`: Centralized logger utility for consistent logging across modules

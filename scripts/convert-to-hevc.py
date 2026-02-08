@@ -13,8 +13,7 @@ def convert_video(input_path: Path, output_path: Path) -> bool:
         "-c:v", "libx265",          # H.265 video codec
         "-c:a", "aac",              # AAC audio codec
         "-preset", "medium",        # Encoding speed/quality balance
-        "-movflags", "+faststart",  # Optimize for streaming
-        "-movflags", "+use_metadata_tags",  # Preserve Apple Quicktime metadata
+        "-movflags", "+faststart+use_metadata_tags",  # Streaming + Apple metadata
         "-map_metadata", "0:g",     # Global metadata only
         "-pix_fmt", "yuv420p",      # QuickTime/macOS compatibility
         "-crf", "23",               # Quality setting (lower = better quality)

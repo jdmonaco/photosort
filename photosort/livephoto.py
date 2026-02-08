@@ -248,6 +248,36 @@ class LivePhotoProcessor:
         else:
             self._process_pairs_with_progress(livephoto_pairs, progress_ctx)
 
+    def _resolve_basename_collision(self, shared_basename: str, creation_date,
+                                      image_file: Path, video_file: Path) -> str:
+        """Check for destination collisions and adjust shared basename if needed."""
+        year = f"{creation_date.year:04d}"
+        month = f"{creation_date.month:02d}"
+        dest_dir = self.dest / year / month
+
+        img_ext = self.file_ops.normalize_jpg_extension(image_file.suffix.lower())
+        vid_ext = video_file.suffix.lower()
+
+        img_dest = dest_dir / f"{shared_basename}{img_ext}"
+        vid_dest = dest_dir / f"{shared_basename}{vid_ext}"
+
+        collision_suffix = 0
+        while img_dest.exists() or vid_dest.exists():
+            # If existing image is a duplicate of our source, the pair is a dupe
+            if img_dest.exists() and self.file_ops.is_duplicate(image_file, img_dest):
+                break
+            collision_suffix += 1
+            adjusted = f"{shared_basename}_{collision_suffix:02d}"
+            img_dest = dest_dir / f"{adjusted}{img_ext}"
+            vid_dest = dest_dir / f"{adjusted}{vid_ext}"
+
+        if collision_suffix > 0:
+            adjusted_basename = f"{shared_basename}_{collision_suffix:02d}"
+            self.logger.info(f"LP basename collision resolved: {shared_basename} -> {adjusted_basename}")
+            return adjusted_basename
+
+        return shared_basename
+
     def _process_pairs_with_progress(self, livephoto_pairs: Dict[str, Dict], progress_ctx) -> None:
         """Internal method to process pairs with a given progress context."""
         # Sort pairs by image filename for deterministic processing order
@@ -259,6 +289,15 @@ class LivePhotoProcessor:
                 shared_basename = pair_data['shared_basename']
                 creation_date = pair_data['creation_date']
 
+                # Capture file sizes before processing (files may be moved)
+                image_size = image_file.stat().st_size
+                video_size = video_file.stat().st_size
+
+                # Resolve basename collisions at destination
+                shared_basename = self._resolve_basename_collision(
+                    shared_basename, creation_date, image_file, video_file
+                )
+
                 # Process image file with shared basename
                 success_image = self._process_livephoto_file(
                     image_file, shared_basename, creation_date, progress_ctx
@@ -269,9 +308,6 @@ class LivePhotoProcessor:
                     video_file, shared_basename, creation_date, progress_ctx
                 )
 
-                # Record file sizes
-                image_size = image_file.stat().st_size
-                video_size = video_file.stat().st_size
                 lp_size = image_size + video_size
 
                 if success_image and success_video:
