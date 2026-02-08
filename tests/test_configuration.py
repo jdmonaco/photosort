@@ -390,29 +390,3 @@ class TestConfiguration:
         assert "Confirm processing plan" not in result2.output
         assert "Continue? [y/N]:" not in result2.output
 
-    def test_explicit_paths_no_confirmation(self, cli_runner, temp_source_folder, test_config_path):
-        """Test that explicit paths don't trigger confirmation."""
-        dest_path = test_config_path.parent / "test_explicit_paths"
-
-        # First run to create config
-        result1 = cli_runner(
-            str(temp_source_folder),
-            str(dest_path),
-            "--dry-run",
-            config_path=test_config_path
-        )
-
-        assert result1.exit_code == 0
-
-        # Run again with explicit paths (should not show confirmation)
-        result2 = cli_runner(
-            str(temp_source_folder),
-            str(dest_path),
-            "--dry-run",
-            config_path=test_config_path
-        )
-
-        assert result2.exit_code == 0
-        assert "Processing Plan:" in result2.output
-        # Should not show confirmation since paths were explicit
-        assert "Confirm processing plan" not in result2.output

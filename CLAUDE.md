@@ -352,31 +352,30 @@ Processing Plan:
   Group:           staff
 ```
 
-### Confirmation Prompt for Saved Configuration
-When photosort is run with no arguments (using saved source/destination paths), it displays a confirmation prompt:
+### Confirmation Prompt
+After displaying the Processing Plan, photosort always prompts for confirmation:
 
 ```
-Confirm processing plan with saved configuration.
-Continue? [y/N]: 
+Confirm processing plan.
+Continue? [y/N]:
 ```
 
-This safety feature prevents accidental processing with forgotten or outdated saved configuration.
+This safety feature lets you review the plan before committing to any file operations.
 
 #### Bypassing Confirmation
 - Use `--yes` or `-y` flag to automatically confirm and skip the prompt
-- Explicit source/destination arguments never trigger confirmation
+- `--dry-run` skips the prompt since it's already a safe preview mode
 - Useful for automation and scripting
 
 #### Examples
 ```bash
 # Shows confirmation prompt
 $ photosort
+$ photosort ~/Downloads ~/Pictures
 
 # Bypasses confirmation
 $ photosort --yes
-
-# No confirmation needed (explicit paths)
-$ photosort ~/Downloads ~/Pictures
+$ photosort --dry-run
 ```
 
 ## Public API (`photosort.__init__.py`)
@@ -436,7 +435,7 @@ The photosort project includes a comprehensive pytest-based test suite that cond
 - **Real Media Testing**: Tests use real media files with actual EXIF metadata for authentic behavior
 - **Test Isolation**: Each test uses a separate temporary config directory to avoid interference
 - **CLI Integration**: Tests simulate actual command-line usage through subprocess-style execution
-- **Comprehensive Coverage**: 61 tests across 6 modules covering all major functionality
+- **Comprehensive Coverage**: 60 tests across 6 modules covering all major functionality
 
 ### Test Structure
 ```

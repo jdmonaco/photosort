@@ -104,10 +104,9 @@ def cli_runner(monkeypatch):
             sys.stdout = stdout
             sys.stderr = stderr
 
-            # Mock console.input to avoid hanging on confirmation prompts
+            # Mock console.input to auto-confirm processing prompts
             def mock_input(prompt=""):
-                # Default to "no" for confirmation prompts to avoid hanging
-                return "n"
+                return "y"
             
             # Apply the mock
             from photosort.constants import get_console

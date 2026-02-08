@@ -182,7 +182,7 @@ Examples:
     )
     parser.add_argument(
         "--yes", "-y", action="store_true",
-        help="Auto-confirm processing for saved source/dest paths"
+        help="Auto-confirm processing without prompting"
     )
     parser.add_argument(
         "--dry-run", "-n", action="store_true",
@@ -245,7 +245,7 @@ def show_processing_plan(source: Path, dest: Path, dry_run: bool, copy_mode: boo
 
 def confirm_processing() -> bool:
     """Ask for confirmation when using saved configuration."""
-    console.print("[yellow]Confirm processing plan with saved configuration.[/yellow]")
+    console.print("[yellow]Confirm processing plan.[/yellow]")
 
     try:
         response = console.input("Continue? [y/N]: ").strip().lower()
@@ -264,10 +264,6 @@ def main(config_path: Optional[Path] = None) -> int:
     config = Config(config_path=config_path)
     parser = create_parser(config)
     args = parser.parse_args()
-
-    # Detect if running with no positional arguments (using saved config)
-    using_saved_config = args.source is None and args.dest is None and \
-                         args.source_override is None and args.dest_override is None
 
     # Handle version option
     if args.version:
@@ -370,8 +366,8 @@ def main(config_path: Optional[Path] = None) -> int:
         timezone=timezone
     )
 
-    # Show confirmation when using saved config without --yes flag
-    if using_saved_config and not args.yes:
+    # Prompt for confirmation unless --yes or --dry-run
+    if not args.yes and not args.dry_run:
         if not confirm_processing():
             return 0  # Exit gracefully
 

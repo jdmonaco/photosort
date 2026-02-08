@@ -134,7 +134,7 @@ The completion script is saved to `~/.photosort/completion.bash` and sourced fro
 - `--copy`, `-c`: Copy files instead of moving them (default is to move)
 - `--verbose`, `-v`: Enable detailed logging
 - `--version`, `-V`: Display version number and exit (use with `--verbose` for detailed info)
-- `--yes`, `-y`: Auto-confirm processing when using saved configuration (bypasses confirmation prompt)
+- `--yes`, `-y`: Auto-confirm processing without prompting
 - `--install-completion`: Install bash completion script to ~/.bashrc
 
 #### File Ownership
@@ -172,30 +172,29 @@ Processing Plan:
 
 ### Confirmation Prompt
 
-When photosort is run with no arguments (using saved source/destination paths), it displays a safety confirmation:
+After displaying the Processing Plan, photosort always prompts for confirmation before processing:
 
 ```
-Confirm processing plan with saved configuration.
-Continue? [y/N]: 
+Confirm processing plan.
+Continue? [y/N]:
 ```
 
-This prevents accidental processing with forgotten or outdated saved configuration.
+This lets you review the plan before committing to any file operations.
 
 **Bypassing Confirmation:**
 - Use `--yes` or `-y` flag to automatically confirm and skip the prompt
-- Explicit source/destination arguments never trigger confirmation  
+- `--dry-run` skips the prompt since it's already a safe preview mode
 - Useful for automation and scripting
 
 **Examples:**
 ```bash
 # Shows confirmation prompt
 photosort
+photosort ~/Downloads ~/Pictures
 
 # Bypasses confirmation prompt
 photosort --yes
-
-# No confirmation needed (explicit paths)
-photosort ~/Downloads ~/Pictures
+photosort --dry-run
 ```
 
 ## File Organization
@@ -314,7 +313,7 @@ This ensures tests run with real-world file characteristics while keeping the te
 
 ### Test Coverage
 
-The test suite includes 61 tests across 6 modules:
+The test suite includes 60 tests across 6 modules:
 - **Basic Operations**: Move/copy modes, validation, argument handling
 - **Configuration**: Settings persistence, defaults, validation
 - **File Organization**: Date structure, naming, duplicates, cleanup
