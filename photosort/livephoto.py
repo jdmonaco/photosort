@@ -43,8 +43,8 @@ class LivePhotoProcessor:
         if exiftool_available:
             try:
                 return self._detect_by_content_identifier(media_files)
-            except (subprocess.CalledProcessError, json.JSONDecodeError) as e:
-                self.logger.debug(f"exiftool failed or JSON parse error: {e}")
+            except subprocess.CalledProcessError as e:
+                self.logger.debug(f"exiftool failed: {e}")
                 return self._detect_by_basename_fallback(media_files)
         else:
             return self._detect_by_basename_fallback(media_files)
@@ -99,12 +99,16 @@ class LivePhotoProcessor:
                 # Add all files in batch to command
                 cmd.extend(str(f) for f in batch)
 
-                result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+                result = subprocess.run(cmd, capture_output=True, text=True)
 
                 # Parse JSON output - will be a list of objects, one per file
-                json_data = json.loads(result.stdout)
-                if isinstance(json_data, list):
-                    exif_data.extend(json_data)
+                if result.stdout.strip():
+                    try:
+                        json_data = json.loads(result.stdout)
+                        if isinstance(json_data, list):
+                            exif_data.extend(json_data)
+                    except json.JSONDecodeError:
+                        self.logger.debug(f"Failed to parse exiftool JSON for batch starting at index {i}")
 
                 # Update progress for the batch
                 progress.update(scan_task, advance=len(batch))
