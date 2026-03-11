@@ -34,25 +34,24 @@ classifiers = [
     "Topic :: Utilities",
 ]
 
+[project.urls]
+Repository = "https://github.com/jdmonaco/photosort"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "black>=22.0.0",
+    "mypy>=1.0.0",
+]
+
 [tool.hatch.version]
 path = "photosort/__init__.py"
 
 [project.scripts]
 photosort = "photosort.cli:main"
 
-# Include completion and scripts in package data
 [tool.hatch.build]
 include = [
-    "photosort/completion/*",
-    "scripts/*",
-]
-
-[project.urls]
-Repository = "https://github.com/jdmonaco/photosort"
-
-[dependency-groups]
-dev = [
-    "pytest>=7.0.0",
-    "black>=22.0.0",
-    "mypy>=1.0.0",
+    "photosort/**/*.py",
+    "photosort/data/*",
 ]

@@ -53,72 +53,6 @@ def set_directory_groups(dest_path: Path, group_name: str) -> None:
         console.print(f"[yellow]Warning: Could not set group on directories: {e}[/yellow]")
 
 
-def install_bash_completion() -> int:
-    """Install bash completion script to user's environment."""
-    # Get the completion script content from package data
-    try:
-        # Use modern Python approach (3.9+) with fallback
-        try:
-            from importlib import resources
-            completion_files = resources.files('photosort') / 'completion'
-            completion_file = completion_files / 'photosort-completion.bash'
-            completion_script = completion_file.read_text()
-        except (ImportError, AttributeError):
-            # Fallback for Python 3.8
-            import pkg_resources
-            completion_script = pkg_resources.resource_string(
-                'photosort', 'completion/photosort-completion.bash'
-            ).decode('utf-8')
-
-    except Exception as e:
-        console.print(f"[red]Failed to load completion script from package: {e}[/red]")
-        console.print("You can manually install using scripts/install-completion.sh")
-        return 1
-
-    try:
-        # Set up paths
-        from .config import Config
-        config = Config()
-        completion_path = config.program_root / "completion.bash"
-        bashrc_path = Path.home() / ".bashrc"
-        marker_start = "# >>> photosort completion >>>"
-        marker_end = "# <<< photosort completion <<<"
-
-        # Check if completion is already installed
-        if bashrc_path.exists():
-            content = bashrc_path.read_text()
-            if marker_start in content:
-                console.print("[yellow]Photosort completion already installed in ~/.bashrc[/yellow]")
-                return 0
-
-        # Ensure photosort config directory exists
-        config.program_root.mkdir(exist_ok=True)
-
-        # Write completion script to ~/.photosort/completion.bash
-        with open(completion_path, "w") as f:
-            f.write(completion_script)
-
-        # Add source line to .bashrc
-        completion_block = f"""
-{marker_start}
-[ -r {completion_path} ] && source {completion_path}
-{marker_end}
-"""
-
-        with open(bashrc_path, "a") as f:
-            f.write(completion_block)
-
-        console.print(f"[green]✓ Completion script saved to {completion_path}[/green]")
-        console.print("[green]✓ Bash completion installed to ~/.bashrc[/green]")
-        console.print("Run 'source ~/.bashrc' or restart your terminal to enable completion")
-        return 0
-
-    except Exception as e:
-        console.print(f"[red]Failed to install completion: {e}[/red]")
-        console.print("You can manually add the completion script from the 'completion/' directory")
-        return 1
-
-
 def create_parser(config: Config) -> argparse.ArgumentParser:
     """Create argument parser with dynamic defaults from config."""
     last_source = config.get_last_source()
@@ -216,11 +150,6 @@ Examples:
         "--version", "-V", action="store_true",
         help=version_help
     )
-    parser.add_argument(
-        "--install-completion", action="store_true",
-        help="Install bash completion script to ~/.bashrc"
-    )
-
     return parser
 
 
@@ -261,6 +190,12 @@ def main(config_path: Optional[Path] = None) -> int:
     Args:
         config_path: Optional path to config file (for testing)
     """
+    # Handle 'completion' subcommand before argparse (it has its own args)
+    argv = sys.argv[1:]
+    if argv and argv[0] == "completion":
+        from .completion import completion_command
+        return completion_command(argv[1:])
+
     config = Config(config_path=config_path)
     parser = create_parser(config)
     args = parser.parse_args()
@@ -275,10 +210,6 @@ def main(config_path: Optional[Path] = None) -> int:
             return 0
         print(__version__)
         return 0
-
-    # Handle completion installation
-    if args.install_completion:
-        return install_bash_completion()
 
     # Determine source and destination
     source_path = (args.source_override or args.source or

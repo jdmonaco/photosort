@@ -15,10 +15,13 @@ Photosort is organized as a Python package with clear separation of concerns:
 photosort/
 ├── __init__.py          # Package init with public API
 ├── cli.py              # Command-line interface and main entry point
+├── completion.py       # Shell completion installation and management
 ├── config.py           # Configuration management (Config class)
 ├── constants.py        # File extension constants, program metadata, centralized logger, and shared utilities
 ├── conversion.py       # Video format conversion using ffmpeg (VideoConverter class, ConversionResult)
 ├── core.py             # Core photo sorting logic (PhotoSorter class)
+├── data/
+│   └── completion.bash # Bash completion script
 ├── file_operations.py  # Shared file operations and utilities (FileOperations class)
 ├── history.py          # Import history management (HistoryManager class)
 ├── livephoto.py        # Live Photo processing (LivePhotoProcessor class)
@@ -84,6 +87,9 @@ uv tool run photosort --help
 
 # Install as tool
 uv tool install --editable .
+
+# Install bash completion
+photosort completion bash --install
 
 # Run tests
 uv run pytest
@@ -331,6 +337,11 @@ Video conversion uses a unified tempfile approach for both COPY and MOVE modes t
 - `--verbose, -v`: Enable debug logging to import.log
 - `--help`: Shows dynamic help with current configured defaults
 
+### Shell Completion
+- `photosort completion bash`: Print completion script to stdout
+- `photosort completion bash --install`: Install completion symlink to `~/.local/share/bash-completion/completions/`
+- `photosort completion bash --path`: Print the completion installation path
+
 ## CLI Behavior and Safety Features
 
 ### Processing Plan Display
@@ -416,7 +427,8 @@ sorter.process_files(media_files)
 ## Development Notes
 
 ### Module Dependencies
-- `cli.py` → `config.py`, `core.py`, `constants.py`, `progress.py`
+- `cli.py` → `config.py`, `completion.py`, `core.py`, `constants.py`, `progress.py`
+- `completion.py` → `photosort.data` (package data resources)
 - `core.py` → `constants.py`, `config.py`, `file_operations.py`, `history.py`, `livephoto.py`, `conversion.py`, `progress.py`, `stats.py`, `timestamps.py`
 - `timestamps.py` → `constants.py`, `config.py` (centralized date/time parsing with timezone handling)
 - `file_operations.py` → `constants.py` (central utility used by multiple modules)
