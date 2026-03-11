@@ -95,7 +95,11 @@ Examples:
   {PROGRAM} ~/Downloads/Photos ~/Pictures/Organized
   {PROGRAM} --dry-run
   {PROGRAM} --source ~/Desktop/NewPhotos
-        """
+
+Shell Completion:
+  {PROGRAM} completion bash            Output completion script
+  {PROGRAM} completion bash --install  Install to user completions directory
+  {PROGRAM} completion bash --path     Show installation path"""
     )
 
     parser.add_argument(

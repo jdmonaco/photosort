@@ -111,8 +111,8 @@ photosort --help
 Enable tab completion for all options, directories, and common values:
 
 ```bash
-# Install completion (saves to ~/.photosort/ and adds source line to ~/.bashrc)
-photosort --install-completion
+# Install completion symlink to ~/.local/share/bash-completion/completions/
+photosort completion bash --install
 
 # Restart terminal or source bashrc
 source ~/.bashrc
@@ -121,9 +121,11 @@ source ~/.bashrc
 photosort --mo<TAB>     # completes to --mode
 photosort --mode 6<TAB> # shows 644, 664, 600, etc.
 photosort ~/P<TAB>      # completes directory paths
-```
 
-The completion script is saved to `~/.photosort/completion.bash` and sourced from `~/.bashrc`. You can also manually install using `scripts/install-completion.sh`.
+# Other completion commands:
+photosort completion bash          # Print script to stdout
+photosort completion bash --path   # Show installation path
+```
 
 ### Options
 
@@ -135,7 +137,6 @@ The completion script is saved to `~/.photosort/completion.bash` and sourced fro
 - `--verbose`, `-v`: Enable detailed logging
 - `--version`, `-V`: Display version number and exit (use with `--verbose` for detailed info)
 - `--yes`, `-y`: Auto-confirm processing without prompting
-- `--install-completion`: Install bash completion script to ~/.bashrc
 
 #### File Ownership
 - `--mode`, `-m`: File permissions in octal format (e.g., 644, 664, 400)
